@@ -1,0 +1,31 @@
+# MCP dependencies
+mcp==1.0.0
+
+# Web framework (compatible version with MCP)
+fastapi>=0.115.0
+uvicorn[standard]==0.32.0
+
+# Database
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+asyncpg==0.30.0
+alembic==1.14.0
+
+# Authentication & Security
+cryptography==44.0.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.12
+
+# HTTP Client
+httpx==0.28.1
+aiohttp==3.11.10
+
+# Configuration & Environment
+python-dotenv==1.0.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# Utilities
+python-json-logger==3.2.1
+pyyaml==6.0.2

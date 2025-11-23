@@ -1,0 +1,126 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database for credentials and audit logs
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexus-mcp-postgres
+    environment:
+      POSTGRES_DB: nexus_mcp
+      POSTGRES_USER: mcp_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/config/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcp_user -d nexus_mcp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nexus-mcp-network
+    restart: unless-stopped
+
+  # Nexus Dashboard MCP Server
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nexus-mcp-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: postgresql://mcp_user:${DB_PASSWORD:-changeme}@postgres:5432/nexus_mcp
+
+      # Nexus Dashboard Connection
+      NEXUS_CLUSTER_URL: ${NEXUS_CLUSTER_URL:-https://192.168.70.101}
+      NEXUS_USERNAME: ${NEXUS_USERNAME:-admin}
+      NEXUS_PASSWORD: ${NEXUS_PASSWORD}
+      NEXUS_VERIFY_SSL: ${NEXUS_VERIFY_SSL:-false}
+
+      # Security
+      EDIT_MODE_ENABLED: ${EDIT_MODE_ENABLED:-false}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-change-me-in-production}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./openapi_specs:/app/openapi_specs:ro
+      - ./logs:/app/logs
+    stdin_open: true
+    tty: true
+    networks:
+      - nexus-mcp-network
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        sleep 5 &&
+        echo 'Initializing database...' &&
+        python scripts/init_database.py &&
+        echo 'Starting MCP server...' &&
+        python src/main.py
+      "
+
+  # FastAPI Web API Backend
+  web-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nexus-mcp-web-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: postgresql://mcp_user:${DB_PASSWORD:-changeme}@postgres:5432/nexus_mcp
+
+      # Security
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./openapi_specs:/app/openapi_specs:ro
+      - ./logs:/app/logs
+    networks:
+      - nexus-mcp-network
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Starting FastAPI Web API...' &&
+        uvicorn src.api.web_api:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  # Next.js Web UI
+  web-ui:
+    build:
+      context: ./web-ui
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:8002
+    container_name: nexus-mcp-web-ui
+    depends_on:
+      - web-api
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8002
+    ports:
+      - "7001:3000"
+    networks:
+      - nexus-mcp-network
+    restart: unless-stopped
+
+networks:
+  nexus-mcp-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

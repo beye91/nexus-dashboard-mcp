@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Database
+postgres_data/
+*.db
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.env.local
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Misc
+README.md
+LICENSE
+CONTRIBUTING.md
+.DS_Store

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "nexus-dashboard": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "nexus-mcp-server",
+        "python",
+        "src/main.py"
+      ]
+    }
+  }
+}
