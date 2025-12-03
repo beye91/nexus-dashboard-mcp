@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Use relative URLs - Next.js rewrites will proxy to the backend
+// This works for both local and remote deployments
+const API_BASE_URL = '';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,

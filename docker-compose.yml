@@ -104,13 +104,12 @@ services:
     build:
       context: ./web-ui
       dockerfile: Dockerfile
-      args:
-        - NEXT_PUBLIC_API_URL=http://localhost:8002
     container_name: nexus-mcp-web-ui
     depends_on:
       - web-api
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8002
+      # Backend API URL for server-side proxying (uses Docker internal network)
+      - BACKEND_API_URL=http://web-api:8000
     ports:
       - "7001:3000"
     networks:
