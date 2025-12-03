@@ -5,7 +5,7 @@ import io
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends, Request, Response, Cookie
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -17,7 +17,11 @@ from src.config.settings import get_settings
 from src.models.audit import AuditLog
 from src.models.cluster import Cluster
 from src.models.security import SecurityConfig
+from src.models.user import User
+from src.models.role import Role
 from src.services.credential_manager import CredentialManager
+from src.services.user_service import UserService
+from src.services.role_service import RoleService
 from src.utils.encryption import decrypt_password
 from src.api.mcp_transport import router as mcp_router
 
@@ -135,13 +139,182 @@ class SystemStatsResponse(BaseModel):
     edit_mode_enabled: bool
 
 
+# ==================== Auth/User/Role Pydantic Models ====================
+
+class LoginRequest(BaseModel):
+    """Request model for user login."""
+    username: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
+
+
+class LoginResponse(BaseModel):
+    """Response model for login."""
+    token: str
+    user: dict
+
+
+class UserCreate(BaseModel):
+    """Request model for creating a user."""
+    username: str = Field(..., min_length=1, max_length=255)
+    password: str = Field(..., min_length=8)
+    email: Optional[str] = None
+    display_name: Optional[str] = None
+    is_superuser: bool = False
+    role_ids: Optional[List[int]] = None
+
+
+class UserUpdate(BaseModel):
+    """Request model for updating a user."""
+    email: Optional[str] = None
+    display_name: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_superuser: Optional[bool] = None
+    password: Optional[str] = None
+
+
+class UserResponse(BaseModel):
+    """Response model for user information."""
+    id: int
+    username: str
+    email: Optional[str]
+    display_name: Optional[str]
+    is_active: bool
+    is_superuser: bool
+    auth_type: str
+    last_login: Optional[str]
+    created_at: str
+    updated_at: str
+    roles: List[dict]
+    has_edit_mode: bool
+
+
+class RoleCreate(BaseModel):
+    """Request model for creating a role."""
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    edit_mode_enabled: bool = False
+    operations: Optional[List[str]] = None
+
+
+class RoleUpdate(BaseModel):
+    """Request model for updating a role."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    edit_mode_enabled: Optional[bool] = None
+
+
+class RoleResponse(BaseModel):
+    """Response model for role information."""
+    id: int
+    name: str
+    description: Optional[str]
+    edit_mode_enabled: bool
+    is_system_role: bool
+    operations_count: int
+    operations: Optional[List[str]] = None
+    created_at: str
+    updated_at: str
+
+
+class OperationResponse(BaseModel):
+    """Response model for an operation."""
+    name: str
+    method: str
+    path: str
+    api_name: str
+    description: str
+
+
+class OperationsListResponse(BaseModel):
+    """Response model for operations list."""
+    total: int
+    operations: List[OperationResponse]
+
+
+class SetRoleOperationsRequest(BaseModel):
+    """Request model for setting role operations."""
+    operations: List[str]
+
+
+class AssignRolesRequest(BaseModel):
+    """Request model for assigning roles to a user."""
+    role_ids: List[int]
+
+
 # Initialize services
 credential_manager = CredentialManager()
+user_service = UserService()
+role_service = RoleService()
 settings = get_settings()
 db = get_db()
 
 # Global startup time for uptime calculation
 startup_time = datetime.utcnow()
+
+
+# ==================== Authentication Helpers ====================
+
+SESSION_COOKIE_NAME = "nexus_session"
+
+
+async def get_current_user(
+    request: Request,
+    session_token: Optional[str] = Cookie(None, alias=SESSION_COOKIE_NAME),
+) -> Optional[User]:
+    """Get current authenticated user from session cookie.
+
+    Args:
+        request: FastAPI request object
+        session_token: Session token from cookie
+
+    Returns:
+        User instance or None if not authenticated
+    """
+    if not session_token:
+        return None
+    return await user_service.validate_session(session_token)
+
+
+async def require_auth(
+    user: Optional[User] = Depends(get_current_user),
+) -> User:
+    """Require authentication - raises 401 if not authenticated.
+
+    Args:
+        user: Current user from get_current_user
+
+    Returns:
+        Authenticated User instance
+
+    Raises:
+        HTTPException: 401 if not authenticated
+    """
+    # Check if any users exist - if not, allow unauthenticated access
+    if not await user_service.has_any_users():
+        return None
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+async def require_superuser(
+    user: User = Depends(require_auth),
+) -> User:
+    """Require superuser privileges.
+
+    Args:
+        user: Current authenticated user
+
+    Returns:
+        Authenticated superuser
+
+    Raises:
+        HTTPException: 403 if not superuser
+    """
+    if user and not user.is_superuser:
+        raise HTTPException(status_code=403, detail="Superuser privileges required")
+    return user
 
 
 # Health and System Endpoints
@@ -684,6 +857,551 @@ async def get_documentation():
         raise HTTPException(status_code=404, detail="Documentation file not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading documentation: {str(e)}")
+
+
+# ==================== Authentication Endpoints ====================
+
+@app.post("/api/auth/login", response_model=LoginResponse)
+async def login(login_data: LoginRequest, response: Response):
+    """Authenticate user and create session."""
+    user = await user_service.authenticate(login_data.username, login_data.password)
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    # Create session
+    token = await user_service.create_session(user)
+
+    # Set session cookie
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=False,  # Set to True in production with HTTPS
+        samesite="lax",
+        max_age=24 * 60 * 60,  # 24 hours
+    )
+
+    return {
+        "token": token,
+        "user": {
+            **user.to_dict(),
+            "has_edit_mode": user.has_edit_mode(),
+        },
+    }
+
+
+@app.post("/api/auth/logout")
+async def logout(
+    response: Response,
+    session_token: Optional[str] = Cookie(None, alias=SESSION_COOKIE_NAME),
+):
+    """Logout current user and invalidate session."""
+    if session_token:
+        await user_service.invalidate_session(session_token)
+
+    # Clear session cookie
+    response.delete_cookie(key=SESSION_COOKIE_NAME)
+
+    return {"message": "Logged out successfully"}
+
+
+@app.get("/api/auth/me")
+async def get_current_user_info(user: Optional[User] = Depends(get_current_user)):
+    """Get current authenticated user information."""
+    # Check if any users exist
+    has_users = await user_service.has_any_users()
+
+    if not has_users:
+        # No users exist - return setup mode indicator
+        return {
+            "authenticated": False,
+            "setup_required": True,
+            "message": "No users configured. Create first admin user.",
+        }
+
+    if not user:
+        return {
+            "authenticated": False,
+            "setup_required": False,
+        }
+
+    return {
+        "authenticated": True,
+        "setup_required": False,
+        "user": {
+            **user.to_dict(),
+            "has_edit_mode": user.has_edit_mode(),
+            "api_token": user.api_token,  # Include for Claude Desktop setup
+        },
+    }
+
+
+@app.post("/api/auth/setup")
+async def initial_setup(user_data: UserCreate, response: Response):
+    """Create the first admin user (only works if no users exist)."""
+    # Check if users already exist
+    if await user_service.has_any_users():
+        raise HTTPException(
+            status_code=400,
+            detail="Setup already completed. Users already exist."
+        )
+
+    try:
+        # Create superuser
+        user = await user_service.create_user(
+            username=user_data.username,
+            password=user_data.password,
+            email=user_data.email,
+            display_name=user_data.display_name,
+            is_superuser=True,
+            generate_api_token=True,
+        )
+
+        # Assign Administrator role if exists
+        admin_role = await role_service.get_role_by_name("Administrator")
+        if admin_role:
+            await user_service.assign_roles(user.id, [admin_role.id])
+
+        # Create session for auto-login
+        token = await user_service.create_session(user)
+
+        # Set session cookie
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=token,
+            httponly=True,
+            secure=False,
+            samesite="lax",
+            max_age=24 * 60 * 60,
+        )
+
+        # Reload user to get roles
+        user = await user_service.get_user(user.id)
+
+        return {
+            "message": "Setup completed successfully",
+            "token": token,
+            "user": {
+                **user.to_dict(),
+                "has_edit_mode": user.has_edit_mode(),
+                "api_token": user.api_token,
+            },
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ==================== User Management Endpoints ====================
+
+@app.get("/api/users", response_model=List[UserResponse])
+async def list_users(
+    active_only: bool = Query(False),
+    _user: User = Depends(require_auth),
+):
+    """List all users."""
+    users = await user_service.list_users(active_only=active_only)
+
+    return [
+        UserResponse(
+            id=u.id,
+            username=u.username,
+            email=u.email,
+            display_name=u.display_name,
+            is_active=u.is_active,
+            is_superuser=u.is_superuser,
+            auth_type=u.auth_type,
+            last_login=u.last_login.isoformat() if u.last_login else None,
+            created_at=u.created_at.isoformat(),
+            updated_at=u.updated_at.isoformat(),
+            roles=[r.to_dict(include_operations=False) for r in u.roles],
+            has_edit_mode=u.has_edit_mode(),
+        )
+        for u in users
+    ]
+
+
+@app.post("/api/users", response_model=UserResponse, status_code=201)
+async def create_user(
+    user_data: UserCreate,
+    _admin: User = Depends(require_superuser),
+):
+    """Create a new user (superuser only)."""
+    try:
+        user = await user_service.create_user(
+            username=user_data.username,
+            password=user_data.password,
+            email=user_data.email,
+            display_name=user_data.display_name,
+            is_superuser=user_data.is_superuser,
+            generate_api_token=True,
+        )
+
+        # Assign roles if provided
+        if user_data.role_ids:
+            user = await user_service.assign_roles(user.id, user_data.role_ids)
+
+        return UserResponse(
+            id=user.id,
+            username=user.username,
+            email=user.email,
+            display_name=user.display_name,
+            is_active=user.is_active,
+            is_superuser=user.is_superuser,
+            auth_type=user.auth_type,
+            last_login=user.last_login.isoformat() if user.last_login else None,
+            created_at=user.created_at.isoformat(),
+            updated_at=user.updated_at.isoformat(),
+            roles=[r.to_dict(include_operations=False) for r in user.roles] if user.roles else [],
+            has_edit_mode=user.has_edit_mode(),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/users/{user_id}", response_model=UserResponse)
+async def get_user(
+    user_id: int,
+    _user: User = Depends(require_auth),
+):
+    """Get user by ID."""
+    user = await user_service.get_user(user_id)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        display_name=user.display_name,
+        is_active=user.is_active,
+        is_superuser=user.is_superuser,
+        auth_type=user.auth_type,
+        last_login=user.last_login.isoformat() if user.last_login else None,
+        created_at=user.created_at.isoformat(),
+        updated_at=user.updated_at.isoformat(),
+        roles=[r.to_dict(include_operations=False) for r in user.roles] if user.roles else [],
+        has_edit_mode=user.has_edit_mode(),
+    )
+
+
+@app.put("/api/users/{user_id}", response_model=UserResponse)
+async def update_user(
+    user_id: int,
+    user_data: UserUpdate,
+    _admin: User = Depends(require_superuser),
+):
+    """Update user (superuser only)."""
+    user = await user_service.update_user(
+        user_id=user_id,
+        email=user_data.email,
+        display_name=user_data.display_name,
+        is_active=user_data.is_active,
+        is_superuser=user_data.is_superuser,
+        password=user_data.password,
+    )
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Reload to get roles
+    user = await user_service.get_user(user_id)
+
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        display_name=user.display_name,
+        is_active=user.is_active,
+        is_superuser=user.is_superuser,
+        auth_type=user.auth_type,
+        last_login=user.last_login.isoformat() if user.last_login else None,
+        created_at=user.created_at.isoformat(),
+        updated_at=user.updated_at.isoformat(),
+        roles=[r.to_dict(include_operations=False) for r in user.roles] if user.roles else [],
+        has_edit_mode=user.has_edit_mode(),
+    )
+
+
+@app.delete("/api/users/{user_id}", status_code=204)
+async def delete_user(
+    user_id: int,
+    _admin: User = Depends(require_superuser),
+):
+    """Delete user (superuser only)."""
+    deleted = await user_service.delete_user(user_id)
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return None
+
+
+@app.put("/api/users/{user_id}/roles", response_model=UserResponse)
+async def assign_user_roles(
+    user_id: int,
+    roles_data: AssignRolesRequest,
+    _admin: User = Depends(require_superuser),
+):
+    """Assign roles to a user (superuser only)."""
+    user = await user_service.assign_roles(user_id, roles_data.role_ids)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        display_name=user.display_name,
+        is_active=user.is_active,
+        is_superuser=user.is_superuser,
+        auth_type=user.auth_type,
+        last_login=user.last_login.isoformat() if user.last_login else None,
+        created_at=user.created_at.isoformat(),
+        updated_at=user.updated_at.isoformat(),
+        roles=[r.to_dict(include_operations=False) for r in user.roles] if user.roles else [],
+        has_edit_mode=user.has_edit_mode(),
+    )
+
+
+@app.post("/api/users/{user_id}/regenerate-token")
+async def regenerate_user_token(
+    user_id: int,
+    current_user: User = Depends(require_auth),
+):
+    """Regenerate API token for a user (user themselves or superuser)."""
+    # Users can regenerate their own token, or superusers can regenerate any
+    if current_user and not current_user.is_superuser and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Can only regenerate your own token")
+
+    new_token = await user_service.regenerate_api_token(user_id)
+
+    if not new_token:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {"api_token": new_token}
+
+
+# ==================== Role Management Endpoints ====================
+
+@app.get("/api/roles", response_model=List[RoleResponse])
+async def list_roles(
+    include_system: bool = Query(True),
+    _user: User = Depends(require_auth),
+):
+    """List all roles."""
+    roles = await role_service.list_roles(include_system=include_system)
+
+    return [
+        RoleResponse(
+            id=r.id,
+            name=r.name,
+            description=r.description,
+            edit_mode_enabled=r.edit_mode_enabled,
+            is_system_role=r.is_system_role,
+            operations_count=len(r.operations) if r.operations else 0,
+            operations=[op.operation_name for op in r.operations] if r.operations else [],
+            created_at=r.created_at.isoformat(),
+            updated_at=r.updated_at.isoformat(),
+        )
+        for r in roles
+    ]
+
+
+@app.post("/api/roles", response_model=RoleResponse, status_code=201)
+async def create_role(
+    role_data: RoleCreate,
+    _admin: User = Depends(require_superuser),
+):
+    """Create a new role (superuser only)."""
+    try:
+        role = await role_service.create_role(
+            name=role_data.name,
+            description=role_data.description,
+            edit_mode_enabled=role_data.edit_mode_enabled,
+            operations=role_data.operations,
+        )
+
+        # Reload to get operations
+        role = await role_service.get_role(role.id)
+
+        return RoleResponse(
+            id=role.id,
+            name=role.name,
+            description=role.description,
+            edit_mode_enabled=role.edit_mode_enabled,
+            is_system_role=role.is_system_role,
+            operations_count=len(role.operations) if role.operations else 0,
+            operations=[op.operation_name for op in role.operations] if role.operations else [],
+            created_at=role.created_at.isoformat(),
+            updated_at=role.updated_at.isoformat(),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/roles/{role_id}", response_model=RoleResponse)
+async def get_role(
+    role_id: int,
+    _user: User = Depends(require_auth),
+):
+    """Get role by ID with operations."""
+    role = await role_service.get_role(role_id)
+
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    return RoleResponse(
+        id=role.id,
+        name=role.name,
+        description=role.description,
+        edit_mode_enabled=role.edit_mode_enabled,
+        is_system_role=role.is_system_role,
+        operations_count=len(role.operations) if role.operations else 0,
+        operations=[op.operation_name for op in role.operations] if role.operations else [],
+        created_at=role.created_at.isoformat(),
+        updated_at=role.updated_at.isoformat(),
+    )
+
+
+@app.put("/api/roles/{role_id}", response_model=RoleResponse)
+async def update_role(
+    role_id: int,
+    role_data: RoleUpdate,
+    _admin: User = Depends(require_superuser),
+):
+    """Update role (superuser only)."""
+    try:
+        role = await role_service.update_role(
+            role_id=role_id,
+            name=role_data.name,
+            description=role_data.description,
+            edit_mode_enabled=role_data.edit_mode_enabled,
+        )
+
+        if not role:
+            raise HTTPException(status_code=404, detail="Role not found")
+
+        # Reload to get operations
+        role = await role_service.get_role(role_id)
+
+        return RoleResponse(
+            id=role.id,
+            name=role.name,
+            description=role.description,
+            edit_mode_enabled=role.edit_mode_enabled,
+            is_system_role=role.is_system_role,
+            operations_count=len(role.operations) if role.operations else 0,
+            operations=[op.operation_name for op in role.operations] if role.operations else [],
+            created_at=role.created_at.isoformat(),
+            updated_at=role.updated_at.isoformat(),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/roles/{role_id}", status_code=204)
+async def delete_role(
+    role_id: int,
+    _admin: User = Depends(require_superuser),
+):
+    """Delete role (superuser only, cannot delete system roles)."""
+    try:
+        deleted = await role_service.delete_role(role_id)
+
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Role not found")
+
+        return None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/roles/{role_id}/operations", response_model=RoleResponse)
+async def set_role_operations(
+    role_id: int,
+    ops_data: SetRoleOperationsRequest,
+    _admin: User = Depends(require_superuser),
+):
+    """Set operations for a role (replaces existing)."""
+    role = await role_service.set_role_operations(role_id, ops_data.operations)
+
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    return RoleResponse(
+        id=role.id,
+        name=role.name,
+        description=role.description,
+        edit_mode_enabled=role.edit_mode_enabled,
+        is_system_role=role.is_system_role,
+        operations_count=len(role.operations) if role.operations else 0,
+        operations=[op.operation_name for op in role.operations] if role.operations else [],
+        created_at=role.created_at.isoformat(),
+        updated_at=role.updated_at.isoformat(),
+    )
+
+
+# ==================== Operations Endpoints (for searchable dropdown) ====================
+
+@app.get("/api/operations", response_model=OperationsListResponse)
+async def list_operations(
+    search: Optional[str] = Query(None, description="Search by operation name"),
+    api_name: Optional[str] = Query(None, description="Filter by API (manage, analyze, infra, etc.)"),
+    limit: int = Query(100, le=1000),
+    offset: int = Query(0, ge=0),
+    _user: User = Depends(require_auth),
+):
+    """List available operations with search and filtering."""
+    result = await role_service.get_all_available_operations(
+        search=search,
+        api_name=api_name,
+        limit=limit,
+        offset=offset,
+    )
+
+    return {
+        "total": result["total"],
+        "operations": [
+            OperationResponse(
+                name=op["name"],
+                method=op["method"],
+                path=op["path"],
+                api_name=op["api_name"],
+                description=op["description"],
+            )
+            for op in result["operations"]
+        ],
+    }
+
+
+@app.get("/api/operations/grouped")
+async def get_operations_grouped(
+    _user: User = Depends(require_auth),
+):
+    """Get all operations grouped by API name."""
+    grouped = await role_service.get_operations_by_api()
+    return grouped
+
+
+@app.get("/api/operations/api-names")
+async def get_api_names(
+    _user: User = Depends(require_auth),
+):
+    """Get list of unique API names."""
+    api_names = await role_service.get_api_names()
+    return {"api_names": api_names}
+
+
+@app.get("/api/operations/count")
+async def get_operations_count(
+    _user: User = Depends(require_auth),
+):
+    """Get total count of available operations."""
+    count = await role_service.count_operations()
+    return {"total": count}
 
 
 if __name__ == "__main__":

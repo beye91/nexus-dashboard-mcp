@@ -1,4 +1,22 @@
 import axios from 'axios';
+import type {
+  User,
+  Role,
+  LoginRequest,
+  LoginResponse,
+  AuthMeResponse,
+  SetupResponse,
+  CreateUserRequest,
+  UpdateUserRequest,
+  CreateRoleRequest,
+  UpdateRoleRequest,
+  AssignRolesRequest,
+  SetRoleOperationsRequest,
+  OperationsListResponse,
+  OperationsGrouped,
+  ApiNamesResponse,
+  RegenerateTokenResponse,
+} from '@/types';
 
 // Use relative URLs - Next.js rewrites will proxy to the backend
 // This works for both local and remote deployments
@@ -10,12 +28,13 @@ export const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
   timeout: 30000,
+  withCredentials: true,  // Include cookies for session auth
 });
 
 // Request interceptor
 apiClient.interceptors.request.use(
   (config) => {
-    // Add any auth tokens here if needed
+    // Session token is sent via cookie automatically with withCredentials
     return config;
   },
   (error) => {
@@ -80,5 +99,63 @@ export const api = {
   },
   stats: {
     get: () => apiClient.get('/api/stats'),
+  },
+
+  // Authentication
+  auth: {
+    login: (data: LoginRequest) =>
+      apiClient.post<LoginResponse>('/api/auth/login', data),
+    logout: () =>
+      apiClient.post('/api/auth/logout'),
+    me: () =>
+      apiClient.get<AuthMeResponse>('/api/auth/me'),
+    setup: (data: CreateUserRequest) =>
+      apiClient.post<SetupResponse>('/api/auth/setup', data),
+  },
+
+  // Users
+  users: {
+    list: (activeOnly?: boolean) =>
+      apiClient.get<User[]>('/api/users', { params: { active_only: activeOnly } }),
+    get: (id: number) =>
+      apiClient.get<User>(`/api/users/${id}`),
+    create: (data: CreateUserRequest) =>
+      apiClient.post<User>('/api/users', data),
+    update: (id: number, data: UpdateUserRequest) =>
+      apiClient.put<User>(`/api/users/${id}`, data),
+    delete: (id: number) =>
+      apiClient.delete(`/api/users/${id}`),
+    assignRoles: (id: number, data: AssignRolesRequest) =>
+      apiClient.put<User>(`/api/users/${id}/roles`, data),
+    regenerateToken: (id: number) =>
+      apiClient.post<RegenerateTokenResponse>(`/api/users/${id}/regenerate-token`),
+  },
+
+  // Roles
+  roles: {
+    list: (includeSystem?: boolean) =>
+      apiClient.get<Role[]>('/api/roles', { params: { include_system: includeSystem } }),
+    get: (id: number) =>
+      apiClient.get<Role>(`/api/roles/${id}`),
+    create: (data: CreateRoleRequest) =>
+      apiClient.post<Role>('/api/roles', data),
+    update: (id: number, data: UpdateRoleRequest) =>
+      apiClient.put<Role>(`/api/roles/${id}`, data),
+    delete: (id: number) =>
+      apiClient.delete(`/api/roles/${id}`),
+    setOperations: (id: number, data: SetRoleOperationsRequest) =>
+      apiClient.put<Role>(`/api/roles/${id}/operations`, data),
+  },
+
+  // Operations (for searchable dropdown)
+  operations: {
+    list: (params?: { search?: string; api_name?: string; limit?: number; offset?: number }) =>
+      apiClient.get<OperationsListResponse>('/api/operations', { params }),
+    grouped: () =>
+      apiClient.get<OperationsGrouped>('/api/operations/grouped'),
+    apiNames: () =>
+      apiClient.get<ApiNamesResponse>('/api/operations/api-names'),
+    count: () =>
+      apiClient.get<{ total: number }>('/api/operations/count'),
   },
 };

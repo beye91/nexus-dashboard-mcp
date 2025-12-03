@@ -89,3 +89,125 @@ export interface SystemStats {
   audit_logs_count: number;
   edit_mode_enabled: boolean;
 }
+
+// ==================== User & Authentication Types ====================
+
+export interface User {
+  id: number;
+  username: string;
+  email?: string;
+  display_name?: string;
+  is_active: boolean;
+  is_superuser: boolean;
+  auth_type: 'local' | 'ldap';
+  last_login?: string;
+  created_at: string;
+  updated_at: string;
+  roles: Role[];
+  has_edit_mode: boolean;
+  api_token?: string;  // Only returned for current user
+}
+
+export interface CreateUserRequest {
+  username: string;
+  password: string;
+  email?: string;
+  display_name?: string;
+  is_superuser?: boolean;
+  role_ids?: number[];
+}
+
+export interface UpdateUserRequest {
+  email?: string;
+  display_name?: string;
+  is_active?: boolean;
+  is_superuser?: boolean;
+  password?: string;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  user: User;
+}
+
+export interface AuthMeResponse {
+  authenticated: boolean;
+  setup_required: boolean;
+  message?: string;
+  user?: User;
+}
+
+export interface SetupResponse {
+  message: string;
+  token: string;
+  user: User;
+}
+
+// ==================== Role Types ====================
+
+export interface Role {
+  id: number;
+  name: string;
+  description?: string;
+  edit_mode_enabled: boolean;
+  is_system_role: boolean;
+  operations_count: number;
+  operations?: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateRoleRequest {
+  name: string;
+  description?: string;
+  edit_mode_enabled?: boolean;
+  operations?: string[];
+}
+
+export interface UpdateRoleRequest {
+  name?: string;
+  description?: string;
+  edit_mode_enabled?: boolean;
+}
+
+// ==================== Operation Types (for searchable dropdown) ====================
+
+export interface Operation {
+  name: string;
+  method: string;
+  path: string;
+  api_name: string;
+  description: string;
+}
+
+export interface OperationsListResponse {
+  total: number;
+  operations: Operation[];
+}
+
+export interface OperationsGrouped {
+  [apiName: string]: Operation[];
+}
+
+export interface ApiNamesResponse {
+  api_names: string[];
+}
+
+// ==================== Helper Types ====================
+
+export interface AssignRolesRequest {
+  role_ids: number[];
+}
+
+export interface SetRoleOperationsRequest {
+  operations: string[];
+}
+
+export interface RegenerateTokenResponse {
+  api_token: string;
+}

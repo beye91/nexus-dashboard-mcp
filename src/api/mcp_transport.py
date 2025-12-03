@@ -7,6 +7,11 @@ Usage:
   - GET /mcp/sse - Server-Sent Events endpoint for MCP messages
   - POST /mcp/message - Send MCP requests to the server (SSE transport)
   - POST /mcp/sse - Send MCP requests to the server (Streamable HTTP)
+
+Authentication:
+  - Per-user API tokens: Each user gets a unique API token for Claude Desktop
+  - Legacy MCP_API_TOKEN: Still supported for backward compatibility (all permissions)
+  - Users without API token = no user context (uses global settings)
 """
 
 import asyncio
@@ -14,8 +19,9 @@ import json
 import logging
 import os
 import uuid
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Union
 from datetime import datetime
+from dataclasses import dataclass
 
 from fastapi import APIRouter, HTTPException, Header, Request
 from fastapi.responses import StreamingResponse
@@ -23,6 +29,8 @@ from pydantic import BaseModel
 
 from src.core.mcp_server import NexusDashboardMCP
 from src.config.settings import get_settings
+from src.services.user_service import UserService
+from src.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +41,19 @@ router = APIRouter(prefix="/mcp", tags=["MCP Transport"])
 _mcp_instance: Optional[NexusDashboardMCP] = None
 _mcp_initialized = False
 
-# Store for SSE connections and their message queues
-_sse_connections: Dict[str, asyncio.Queue] = {}
+# User service instance
+_user_service: Optional[UserService] = None
+
+# Store for SSE connections with user context
+@dataclass
+class SSEConnection:
+    """Represents an SSE connection with user context."""
+    queue: asyncio.Queue
+    user: Optional[User] = None
+    allowed_operations: Optional[Set[str]] = None
+    has_edit_mode: bool = False
+
+_sse_connections: Dict[str, SSEConnection] = {}
 
 
 class MCPRequest(BaseModel):
@@ -72,25 +91,150 @@ async def get_mcp_instance() -> NexusDashboardMCP:
     return _mcp_instance
 
 
-def validate_token(authorization: Optional[str]) -> bool:
-    """Validate the MCP API token if configured."""
-    settings = get_settings()
+def get_user_service() -> UserService:
+    """Get or create the UserService instance."""
+    global _user_service
+    if _user_service is None:
+        _user_service = UserService()
+    return _user_service
+
+
+@dataclass
+class AuthResult:
+    """Result of token validation."""
+    is_valid: bool
+    user: Optional[User] = None
+    allowed_operations: Optional[Set[str]] = None
+    has_edit_mode: bool = False
+    is_legacy_token: bool = False  # True if using MCP_API_TOKEN
+
+
+async def validate_token(authorization: Optional[str]) -> AuthResult:
+    """Validate the MCP API token and return user context if available.
+
+    This function supports:
+    1. Per-user API tokens (looked up from users table)
+    2. Legacy MCP_API_TOKEN environment variable (all permissions)
+    3. No token configured (development mode, all permissions)
+
+    Args:
+        authorization: Authorization header value
+
+    Returns:
+        AuthResult with validation status and user context
+    """
     expected_token = os.environ.get("MCP_API_TOKEN")
 
-    # If no token is configured, allow access (for development)
+    # Extract token from header
+    token = None
+    if authorization:
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]
+        else:
+            token = authorization
+
+    # Case 1: No token provided
+    if not token:
+        # If no MCP_API_TOKEN configured, allow unauthenticated access
+        if not expected_token:
+            return AuthResult(is_valid=True, has_edit_mode=True)
+        return AuthResult(is_valid=False)
+
+    # Case 2: Check legacy MCP_API_TOKEN first
+    if expected_token and token == expected_token:
+        logger.debug("Authenticated via legacy MCP_API_TOKEN")
+        return AuthResult(
+            is_valid=True,
+            has_edit_mode=True,
+            is_legacy_token=True,
+        )
+
+    # Case 3: Look up user by API token
+    user_service = get_user_service()
+    user = await user_service.get_user_by_api_token(token)
+
+    if user:
+        # Get user's allowed operations from all roles
+        allowed_ops = user.get_all_operations()
+        has_edit = user.has_edit_mode()
+
+        logger.info(f"Authenticated user '{user.username}' via API token ({len(allowed_ops)} operations allowed)")
+
+        return AuthResult(
+            is_valid=True,
+            user=user,
+            allowed_operations=allowed_ops if allowed_ops else None,
+            has_edit_mode=has_edit,
+        )
+
+    # Case 4: Invalid token
+    # If no MCP_API_TOKEN is set and user lookup failed, deny access
     if not expected_token:
+        # No legacy token required but user token invalid - deny
+        return AuthResult(is_valid=False)
+
+    return AuthResult(is_valid=False)
+
+
+def filter_tools_for_user(tools: List[Dict], auth_result: AuthResult) -> List[Dict]:
+    """Filter tools based on user's allowed operations.
+
+    Args:
+        tools: List of tool dictionaries
+        auth_result: Authentication result with user permissions
+
+    Returns:
+        Filtered list of tools the user is allowed to use
+    """
+    # If no user context or using legacy token, return all tools
+    if auth_result.is_legacy_token or not auth_result.user:
+        return tools
+
+    # If user is superuser, return all tools
+    if auth_result.user.is_superuser:
+        return tools
+
+    # If no operations are allowed, filter to read-only operations
+    allowed_ops = auth_result.allowed_operations
+    if not allowed_ops:
+        # No explicit operations = no tools (or could filter to GET-only)
+        logger.info(f"User '{auth_result.user.username}' has no allowed operations")
+        return []
+
+    # Filter tools by allowed operations
+    filtered = []
+    for tool in tools:
+        tool_name = tool.get("name", "")
+        if tool_name in allowed_ops:
+            filtered.append(tool)
+
+    logger.debug(f"Filtered {len(tools)} tools to {len(filtered)} for user '{auth_result.user.username}'")
+    return filtered
+
+
+def can_execute_tool(tool_name: str, auth_result: AuthResult) -> bool:
+    """Check if user can execute a specific tool.
+
+    Args:
+        tool_name: Name of the tool to execute
+        auth_result: Authentication result with user permissions
+
+    Returns:
+        True if user can execute the tool
+    """
+    # Legacy token or no user context = allow all
+    if auth_result.is_legacy_token or not auth_result.user:
         return True
 
-    if not authorization:
-        return False
+    # Superuser can do anything
+    if auth_result.user.is_superuser:
+        return True
 
-    # Support both "Bearer <token>" and just "<token>"
-    if authorization.startswith("Bearer "):
-        token = authorization[7:]
-    else:
-        token = authorization
+    # Check if operation is in allowed list
+    if auth_result.allowed_operations and tool_name in auth_result.allowed_operations:
+        return True
 
-    return token == expected_token
+    return False
 
 
 @router.get("/health")
@@ -116,17 +260,24 @@ async def mcp_sse_get(
     This endpoint establishes an SSE connection that Claude Desktop uses
     to receive MCP responses and notifications.
     """
-    if not validate_token(authorization):
+    auth_result = await validate_token(authorization)
+    if not auth_result.is_valid:
         raise HTTPException(status_code=401, detail="Invalid or missing API token")
 
     # Generate unique connection ID
     connection_id = str(uuid.uuid4())
 
-    # Create message queue for this connection
+    # Create message queue for this connection with user context
     message_queue: asyncio.Queue = asyncio.Queue()
-    _sse_connections[connection_id] = message_queue
+    _sse_connections[connection_id] = SSEConnection(
+        queue=message_queue,
+        user=auth_result.user,
+        allowed_operations=auth_result.allowed_operations,
+        has_edit_mode=auth_result.has_edit_mode,
+    )
 
-    logger.info(f"MCP SSE connection established: {connection_id}")
+    user_info = f" (user: {auth_result.user.username})" if auth_result.user else ""
+    logger.info(f"MCP SSE connection established: {connection_id}{user_info}")
 
     async def event_generator():
         """Generate SSE events."""
@@ -138,6 +289,11 @@ async def mcp_sse_get(
             # Send server capabilities
             mcp = await get_mcp_instance()
 
+            # Get the connection's queue
+            conn = _sse_connections.get(connection_id)
+            if not conn:
+                return
+
             # Keep connection alive and send messages from queue
             while True:
                 # Check if client disconnected
@@ -147,7 +303,7 @@ async def mcp_sse_get(
                 try:
                     # Wait for messages with timeout (for keepalive)
                     message = await asyncio.wait_for(
-                        message_queue.get(),
+                        conn.queue.get(),
                         timeout=30.0
                     )
                     yield f"event: message\ndata: {json.dumps(message)}\n\n"
@@ -188,7 +344,8 @@ async def mcp_sse_post(
     This is the Streamable HTTP transport - clients POST JSON-RPC messages
     to the same endpoint and receive responses.
     """
-    if not validate_token(authorization):
+    auth_result = await validate_token(authorization)
+    if not auth_result.is_valid:
         raise HTTPException(status_code=401, detail="Invalid or missing API token")
 
     # Parse the request body
@@ -224,7 +381,7 @@ async def mcp_sse_post(
             return {}
 
         elif mcp_request.method == "tools/list":
-            # List available tools
+            # List available tools (filtered by user permissions)
             tools = []
             for operation in mcp.operations:
                 tool = mcp._build_tool_from_operation(operation)
@@ -233,7 +390,9 @@ async def mcp_sse_post(
                     "description": tool.description,
                     "inputSchema": tool.inputSchema,
                 })
-            result = {"tools": tools}
+            # Filter tools based on user permissions
+            filtered_tools = filter_tools_for_user(tools, auth_result)
+            result = {"tools": filtered_tools}
 
         elif mcp_request.method == "tools/call":
             # Execute a tool
@@ -243,6 +402,11 @@ async def mcp_sse_post(
 
             if not tool_name:
                 error = {"code": -32602, "message": "Missing tool name"}
+            elif not can_execute_tool(tool_name, auth_result):
+                # Permission denied
+                user_info = f" for user '{auth_result.user.username}'" if auth_result.user else ""
+                error = {"code": -32600, "message": f"Permission denied{user_info}: operation '{tool_name}' not allowed"}
+                logger.warning(f"Permission denied: {tool_name}{user_info}")
             else:
                 # Call the tool handler
                 contents = await mcp.handle_call_tool(tool_name, tool_arguments)
@@ -276,7 +440,7 @@ async def mcp_sse_post(
         # Also send to SSE connection if available
         response_data = response.model_dump(exclude_none=True)
         if mcp_session_id and mcp_session_id in _sse_connections:
-            await _sse_connections[mcp_session_id].put(response_data)
+            await _sse_connections[mcp_session_id].queue.put(response_data)
 
         return response_data
 
@@ -301,7 +465,8 @@ async def mcp_message(
     This endpoint receives MCP requests from clients using SSE transport
     and returns responses directly via HTTP.
     """
-    if not validate_token(authorization):
+    auth_result = await validate_token(authorization)
+    if not auth_result.is_valid:
         raise HTTPException(status_code=401, detail="Invalid or missing API token")
 
     # Use either connection_id or mcp_session_id
@@ -339,7 +504,7 @@ async def mcp_message(
             return {}
 
         elif mcp_request.method == "tools/list":
-            # List available tools
+            # List available tools (filtered by user permissions)
             tools = []
             for operation in mcp.operations:
                 tool = mcp._build_tool_from_operation(operation)
@@ -348,7 +513,9 @@ async def mcp_message(
                     "description": tool.description,
                     "inputSchema": tool.inputSchema,
                 })
-            result = {"tools": tools}
+            # Filter tools based on user permissions
+            filtered_tools = filter_tools_for_user(tools, auth_result)
+            result = {"tools": filtered_tools}
 
         elif mcp_request.method == "tools/call":
             # Execute a tool
@@ -358,6 +525,11 @@ async def mcp_message(
 
             if not tool_name:
                 error = {"code": -32602, "message": "Missing tool name"}
+            elif not can_execute_tool(tool_name, auth_result):
+                # Permission denied
+                user_info = f" for user '{auth_result.user.username}'" if auth_result.user else ""
+                error = {"code": -32600, "message": f"Permission denied{user_info}: operation '{tool_name}' not allowed"}
+                logger.warning(f"Permission denied: {tool_name}{user_info}")
             else:
                 # Call the tool handler
                 contents = await mcp.handle_call_tool(tool_name, tool_arguments)
@@ -397,13 +569,13 @@ async def mcp_message(
         if session_id and session_id in _sse_connections:
             # If we have a specific session, use it
             logger.info(f"Sending response via SSE to session: {session_id}")
-            await _sse_connections[session_id].put(response_data)
+            await _sse_connections[session_id].queue.put(response_data)
         elif _sse_connections:
             # Broadcast to all connections (works for single-client SSE transport)
             logger.info(f"Broadcasting response to {len(_sse_connections)} SSE connection(s)")
-            for conn_id, queue in _sse_connections.items():
+            for conn_id, conn in _sse_connections.items():
                 try:
-                    await queue.put(response_data)
+                    await conn.queue.put(response_data)
                 except Exception as e:
                     logger.warning(f"Failed to send to connection {conn_id}: {e}")
         else:
@@ -422,8 +594,12 @@ async def mcp_message(
 
 @router.get("/tools")
 async def list_tools(authorization: Optional[str] = Header(None)):
-    """List all available MCP tools (convenience endpoint)."""
-    if not validate_token(authorization):
+    """List all available MCP tools (convenience endpoint).
+
+    Tools are filtered based on the authenticated user's permissions.
+    """
+    auth_result = await validate_token(authorization)
+    if not auth_result.is_valid:
         raise HTTPException(status_code=401, detail="Invalid or missing API token")
 
     mcp = await get_mcp_instance()
@@ -437,7 +613,18 @@ async def list_tools(authorization: Optional[str] = Header(None)):
             "inputSchema": tool.inputSchema,
         })
 
+    # Filter tools based on user permissions
+    filtered_tools = filter_tools_for_user(tools, auth_result)
+
+    user_info = ""
+    if auth_result.user:
+        user_info = f" (user: {auth_result.user.username})"
+    elif auth_result.is_legacy_token:
+        user_info = " (legacy token)"
+
     return {
-        "count": len(tools),
-        "tools": tools,
+        "count": len(filtered_tools),
+        "total_available": len(tools),
+        "user": auth_result.user.username if auth_result.user else None,
+        "tools": filtered_tools,
     }
