@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped
 from sqlalchemy.sql import func
 
 from src.config.database import Base
@@ -17,6 +17,7 @@ class User(Base):
     """Model for user accounts with authentication."""
 
     __tablename__ = "users"
+    __allow_unmapped__ = True
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(255), unique=True, nullable=False, index=True)
@@ -32,13 +33,13 @@ class User(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
     # Relationships
-    roles: List["Role"] = relationship(
+    roles = relationship(
         "Role",
         secondary="user_roles",
         back_populates="users",
         lazy="selectin"
     )
-    sessions: List["UserSession"] = relationship(
+    sessions = relationship(
         "UserSession",
         back_populates="user",
         cascade="all, delete-orphan",
@@ -123,7 +124,7 @@ class UserSession(Base):
     created_at = Column(DateTime, default=func.now(), nullable=False)
 
     # Relationships
-    user: "User" = relationship("User", back_populates="sessions")
+    user = relationship("User", back_populates="sessions")
 
     def __repr__(self) -> str:
         return f"<UserSession(user_id={self.user_id}, expires_at={self.expires_at})>"

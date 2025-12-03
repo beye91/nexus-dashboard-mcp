@@ -17,6 +17,7 @@ class Role(Base):
     """Model for user roles with associated permissions."""
 
     __tablename__ = "roles"
+    __allow_unmapped__ = True
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), unique=True, nullable=False, index=True)
@@ -27,13 +28,13 @@ class Role(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
     # Relationships
-    users: List["User"] = relationship(
+    users = relationship(
         "User",
         secondary="user_roles",
         back_populates="roles",
         lazy="selectin"
     )
-    operations: List["RoleOperation"] = relationship(
+    operations = relationship(
         "RoleOperation",
         back_populates="role",
         cascade="all, delete-orphan",
@@ -89,7 +90,7 @@ class RoleOperation(Base):
     created_at = Column(DateTime, default=func.now(), nullable=False)
 
     # Relationships
-    role: "Role" = relationship("Role", back_populates="operations")
+    role = relationship("Role", back_populates="operations")
 
     # Unique constraint
     __table_args__ = (
