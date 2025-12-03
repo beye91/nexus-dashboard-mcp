@@ -157,7 +157,9 @@ For connecting to an MCP server running on a remote host, use the `mcp-remote` b
       "args": [
         "mcp-remote@latest",
         "http://YOUR_SERVER_IP:8002/mcp/sse",
-        "--allow-http"
+        "--allow-http",
+        "--transport",
+        "sse-only"
       ]
     }
   }
@@ -185,6 +187,8 @@ Then configure Claude Desktop with the token in the header:
         "mcp-remote@latest",
         "http://YOUR_SERVER_IP:8002/mcp/sse",
         "--allow-http",
+        "--transport",
+        "sse-only",
         "--header",
         "Authorization: Bearer your-secure-token-here"
       ]
