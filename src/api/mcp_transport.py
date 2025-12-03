@@ -274,10 +274,11 @@ async def mcp_sse_post(
         )
 
         # Also send to SSE connection if available
+        response_data = response.model_dump(exclude_none=True)
         if mcp_session_id and mcp_session_id in _sse_connections:
-            await _sse_connections[mcp_session_id].put(response.model_dump())
+            await _sse_connections[mcp_session_id].put(response_data)
 
-        return response.model_dump()
+        return response_data
 
     except Exception as e:
         logger.error(f"MCP message handling error: {e}", exc_info=True)
@@ -285,13 +286,14 @@ async def mcp_sse_post(
             jsonrpc="2.0",
             id=mcp_request.id,
             error={"code": -32603, "message": str(e)},
-        ).model_dump()
+        ).model_dump(exclude_none=True)
 
 
 @router.post("/message")
 async def mcp_message(
     request: Request,
     connection_id: Optional[str] = Header(None, alias="X-Connection-Id"),
+    mcp_session_id: Optional[str] = Header(None, alias="Mcp-Session-Id"),
     authorization: Optional[str] = Header(None),
 ):
     """Handle MCP protocol messages (SSE transport message endpoint).
@@ -301,6 +303,10 @@ async def mcp_message(
     """
     if not validate_token(authorization):
         raise HTTPException(status_code=401, detail="Invalid or missing API token")
+
+    # Use either connection_id or mcp_session_id
+    session_id = connection_id or mcp_session_id
+    logger.info(f"MCP /message request - session_id: {session_id}, active_connections: {list(_sse_connections.keys())}")
 
     # Parse the request body
     try:
@@ -382,11 +388,28 @@ async def mcp_message(
             error=error,
         )
 
-        # Send to SSE connection if available
-        if connection_id and connection_id in _sse_connections:
-            await _sse_connections[connection_id].put(response.model_dump())
+        # For legacy SSE transport: Send response to SSE stream
+        # mcp-remote doesn't send session IDs, so we broadcast to all active connections
+        # In production, you'd want proper session correlation
+        # Use exclude_none=True to avoid including "error": null in success responses
+        response_data = response.model_dump(exclude_none=True)
 
-        return response.model_dump()
+        if session_id and session_id in _sse_connections:
+            # If we have a specific session, use it
+            logger.info(f"Sending response via SSE to session: {session_id}")
+            await _sse_connections[session_id].put(response_data)
+        elif _sse_connections:
+            # Broadcast to all connections (works for single-client SSE transport)
+            logger.info(f"Broadcasting response to {len(_sse_connections)} SSE connection(s)")
+            for conn_id, queue in _sse_connections.items():
+                try:
+                    await queue.put(response_data)
+                except Exception as e:
+                    logger.warning(f"Failed to send to connection {conn_id}: {e}")
+        else:
+            logger.info("No active SSE connections, returning via HTTP only")
+
+        return response_data
 
     except Exception as e:
         logger.error(f"MCP message handling error: {e}", exc_info=True)
@@ -394,7 +417,7 @@ async def mcp_message(
             jsonrpc="2.0",
             id=mcp_request.id,
             error={"code": -32603, "message": str(e)},
-        ).model_dump()
+        ).model_dump(exclude_none=True)
 
 
 @router.get("/tools")
