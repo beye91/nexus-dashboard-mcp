@@ -1,7 +1,7 @@
 # Nexus Dashboard MCP Server
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](docker compose.yml)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](requirements.txt)
 [![Next.js](https://img.shields.io/badge/Next.js-16.0-black?logo=next.js&logoColor=white)](web-ui/package.json)
 
@@ -59,7 +59,7 @@ The web UI provides comprehensive management capabilities for the MCP server:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/nexus-dashboard-mcp.git
+git clone https://github.com/beye91/nexus-dashboard-mcp.git
 cd nexus-dashboard-mcp
 ```
 
@@ -87,6 +87,10 @@ SESSION_SECRET=your-random-secret-key
 
 # Database
 DB_PASSWORD=your-secure-password
+DB_USER=mcp_user
+DB_NAME=nexus_mcp
+DB_HOST=postgres
+DB_PORT=5432
 ```
 
 **Generate Encryption Key:**
@@ -98,13 +102,13 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 ```bash
 # Start all services
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Check status
-docker-compose ps
+docker compose ps
 ```
 
 The deployment includes:
@@ -308,7 +312,7 @@ Export audit logs to CSV for compliance reporting.
 
 ```bash
 # Clone repository
-git clone https://github.com/YOUR_GITHUB_USERNAME/nexus-dashboard-mcp.git
+git clone https://github.com/beye91/nexus-dashboard-mcp.git
 cd nexus-dashboard-mcp
 
 # Create virtual environment
@@ -325,7 +329,7 @@ npm install
 cd ..
 
 # Start development environment
-docker-compose up postgres  # Start database only
+docker compose up postgres  # Start database only
 python src/main.py  # Run MCP server locally
 cd web-ui && npm run dev  # Run web UI in dev mode
 ```
@@ -385,9 +389,9 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## 📞 Support
 
-- **Documentation**: [GitHub Wiki](https://github.com/YOUR_GITHUB_USERNAME/nexus-dashboard-mcp/wiki)
-- **Issues**: [GitHub Issues](https://github.com/YOUR_GITHUB_USERNAME/nexus-dashboard-mcp/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/YOUR_GITHUB_USERNAME/nexus-dashboard-mcp/discussions)
+- **Documentation**: [GitHub Wiki](https://github.com/beye91/nexus-dashboard-mcp/wiki)
+- **Issues**: [GitHub Issues](https://github.com/beye91/nexus-dashboard-mcp/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/beye91/nexus-dashboard-mcp/discussions)
 
 ## ⭐ Star History
 
