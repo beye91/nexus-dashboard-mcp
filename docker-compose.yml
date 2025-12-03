@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL database for credentials and audit logs
   postgres:
@@ -8,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: nexus_mcp
       POSTGRES_USER: mcp_user
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: changeme
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./src/config/schema.sql:/docker-entrypoint-initdb.d/schema.sql
@@ -34,7 +32,7 @@ services:
         condition: service_healthy
     environment:
       # Database
-      DATABASE_URL: postgresql://mcp_user:${DB_PASSWORD:-changeme}@postgres:5432/nexus_mcp
+      DATABASE_URL: postgresql://mcp_user:changeme@postgres:5432/nexus_mcp
 
       # Nexus Dashboard Connection
       NEXUS_CLUSTER_URL: ${NEXUS_CLUSTER_URL:-https://192.168.70.101}
@@ -44,7 +42,7 @@ services:
 
       # Security
       EDIT_MODE_ENABLED: ${EDIT_MODE_ENABLED:-false}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-lGczu6Yzd2IrRrcJF3cOS8BsAOO6R-1761BRDusbCuM=}
       SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-change-me-in-production}
 
       # Logging
@@ -78,10 +76,10 @@ services:
         condition: service_healthy
     environment:
       # Database
-      DATABASE_URL: postgresql://mcp_user:${DB_PASSWORD:-changeme}@postgres:5432/nexus_mcp
+      DATABASE_URL: postgresql://mcp_user:changeme@postgres:5432/nexus_mcp
 
       # Security
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-lGczu6Yzd2IrRrcJF3cOS8BsAOO6R-1761BRDusbCuM=}
 
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

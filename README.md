@@ -56,16 +56,27 @@ The web UI provides comprehensive management capabilities for the MCP server:
 - **Python** 3.11+ (for local development)
 - **Node.js** 20+ (for web UI development)
 
-### 1. Clone the Repository
+### 1. Clone and Start
 
 ```bash
 git clone https://github.com/beye91/nexus-dashboard-mcp.git
 cd nexus-dashboard-mcp
+docker compose up -d
 ```
 
-### 2. Configure Environment
+That's it! The application starts with sensible defaults for development and testing.
 
-Create your `.env` file from the example:
+```bash
+# View logs
+docker compose logs -f
+
+# Check status
+docker compose ps
+```
+
+### 2. Configure Environment (Optional)
+
+For production deployments, create a `.env` file to override defaults:
 
 ```bash
 cp .env.example .env
@@ -74,41 +85,19 @@ cp .env.example .env
 Edit `.env` with your configuration:
 
 ```env
-# Nexus Dashboard Configuration
+# Nexus Dashboard Configuration (configure via Web UI or here)
 NEXUS_CLUSTER_URL=https://nexus-dashboard.example.com
 NEXUS_USERNAME=admin
 NEXUS_PASSWORD=YourPassword
-NEXUS_VERIFY_SSL=false  # Set to true if using valid SSL certificates
 
-# Security
-EDIT_MODE_ENABLED=false  # Set to true to enable write operations
-ENCRYPTION_KEY=generate-key-below
-SESSION_SECRET=your-random-secret-key
-
-# Database
-DB_PASSWORD=your-secure-password
-DB_USER=mcp_user
-DB_NAME=nexus_mcp
-DB_HOST=postgres
-DB_PORT=5432
+# Security (generate unique keys for production)
+ENCRYPTION_KEY=your-unique-fernet-key
+SESSION_SECRET_KEY=your-random-secret-key
 ```
 
-**Generate Encryption Key:**
+**Generate Encryption Key for Production:**
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-### 3. Start with Docker Compose
-
-```bash
-# Start all services
-docker compose up -d
-
-# View logs
-docker compose logs -f
-
-# Check status
-docker compose ps
 ```
 
 The deployment includes:
@@ -117,7 +106,7 @@ The deployment includes:
 - **Web UI** (port 7001): Next.js management interface
 - **MCP Server** (stdio): Model Context Protocol server for Claude
 
-### 4. Access the Web UI
+### 3. Access the Web UI
 
 Open your browser and navigate to:
 ```
@@ -131,7 +120,7 @@ http://localhost:7001
 4. Click "Test Connection" to verify
 5. Save the cluster configuration
 
-### 5. Configure Claude Desktop
+### 4. Configure Claude Desktop
 
 Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 
