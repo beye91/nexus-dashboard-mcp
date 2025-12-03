@@ -879,6 +879,7 @@ async def login(login_data: LoginRequest, response: Response):
         httponly=True,
         secure=False,  # Set to True in production with HTTPS
         samesite="lax",
+        path="/",  # Cookie available for all paths
         max_age=24 * 60 * 60,  # 24 hours
     )
 
@@ -901,7 +902,7 @@ async def logout(
         await user_service.invalidate_session(session_token)
 
     # Clear session cookie
-    response.delete_cookie(key=SESSION_COOKIE_NAME)
+    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
 
     return {"message": "Logged out successfully"}
 
@@ -973,6 +974,7 @@ async def initial_setup(user_data: UserCreate, response: Response):
             httponly=True,
             secure=False,
             samesite="lax",
+            path="/",  # Cookie available for all paths
             max_age=24 * 60 * 60,
         )
 
