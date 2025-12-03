@@ -13,8 +13,8 @@ export default function DocsPage() {
   useEffect(() => {
     async function fetchDocs() {
       try {
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002';
-        const response = await fetch(`${API_BASE_URL}/api/docs`);
+        // Use relative URL - Next.js rewrites will proxy to the backend
+        const response = await fetch('/api/docs');
         if (!response.ok) {
           throw new Error('Failed to load documentation');
         }
