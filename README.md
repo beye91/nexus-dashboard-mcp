@@ -52,9 +52,9 @@ The web UI provides comprehensive management capabilities for the MCP server:
 ### Prerequisites
 
 - **Docker** 20.10+ and Docker Compose 2.0+
-- **Access** to a Cisco Nexus Dashboard cluster
+- **Cisco Nexus Dashboard** with NDFC 12.x (requires nexus-bot 4.1+)
 - **Python** 3.11+ (for local development)
-- **Node.js** 20+ (for web UI development)
+- **Node.js** 18+ (for remote MCP access via mcp-remote)
 
 ### 1. Clone and Start
 
@@ -431,13 +431,6 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - **Cisco** - For Nexus Dashboard APIs
 - **FastMCP** - For the excellent MCP framework
 - **Community Contributors** - Thank you for your contributions!
-
-## 👥 Contributors
-
-<!-- ALL-CONTRIBUTORS-LIST:START -->
-| [<img src="https://github.com/beye91.png" width="100px;" alt="beye91"/><br /><sub><b>Christian Beye</b></sub>](https://github.com/beye91)<br />💻 📖 🚧 | [<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Anthropic_logo.svg/200px-Anthropic_logo.svg.png" width="100px;" alt="Claude"/><br /><sub><b>Claude (Anthropic)</b></sub>](https://claude.ai)<br />💻 🤖 |
-| :---: | :---: |
-<!-- ALL-CONTRIBUTORS-LIST:END -->
 
 ## 📞 Support
 
