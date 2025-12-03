@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
 
 export default function Navigation() {
   const pathname = usePathname();
+  const { user, logout, isAuthenticated } = useAuth();
 
   const navItems = [
     { href: '/', label: 'Dashboard' },
@@ -24,7 +26,7 @@ export default function Navigation() {
               Nexus Dashboard MCP Server
             </Link>
           </div>
-          <div className="flex space-x-1">
+          <div className="flex items-center space-x-1">
             {navItems.map((item) => {
               const isActive = pathname === item.href;
               return (
@@ -41,6 +43,18 @@ export default function Navigation() {
                 </Link>
               );
             })}
+            {isAuthenticated && (
+              <>
+                <span className="text-gray-400 mx-2">|</span>
+                <span className="text-sm text-gray-600">{user?.username}</span>
+                <button
+                  onClick={logout}
+                  className="ml-2 px-3 py-2 rounded-md text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 transition"
+                >
+                  Logout
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
