@@ -5,7 +5,8 @@ Claude Desktop to connect to the MCP server running on a remote host.
 
 Usage:
   - GET /mcp/sse - Server-Sent Events endpoint for MCP messages
-  - POST /mcp/message - Send MCP requests to the server
+  - POST /mcp/message - Send MCP requests to the server (SSE transport)
+  - POST /mcp/sse - Send MCP requests to the server (Streamable HTTP)
 """
 
 import asyncio
