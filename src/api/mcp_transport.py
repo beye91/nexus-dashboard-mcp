@@ -106,11 +106,11 @@ async def mcp_health():
 
 
 @router.get("/sse")
-async def mcp_sse(
+async def mcp_sse_get(
     request: Request,
     authorization: Optional[str] = Header(None),
 ):
-    """Server-Sent Events endpoint for MCP communication.
+    """Server-Sent Events endpoint for MCP communication (GET).
 
     This endpoint establishes an SSE connection that Claude Desktop uses
     to receive MCP responses and notifications.
@@ -130,31 +130,12 @@ async def mcp_sse(
     async def event_generator():
         """Generate SSE events."""
         try:
-            # Send initial connection event with connection ID
-            init_event = {
-                "type": "connection",
-                "connection_id": connection_id,
-                "message": "MCP SSE connection established",
-            }
-            yield f"event: connection\ndata: {json.dumps(init_event)}\n\n"
+            # Send endpoint event first (required by mcp-remote)
+            # This tells the client where to POST messages
+            yield f"event: endpoint\ndata: /mcp/sse\n\n"
 
             # Send server capabilities
             mcp = await get_mcp_instance()
-            capabilities = {
-                "jsonrpc": "2.0",
-                "method": "notifications/initialized",
-                "params": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {
-                        "tools": {"listChanged": True},
-                    },
-                    "serverInfo": {
-                        "name": "nexus-dashboard-mcp",
-                        "version": "1.0.0",
-                    },
-                },
-            }
-            yield f"event: message\ndata: {json.dumps(capabilities)}\n\n"
 
             # Keep connection alive and send messages from queue
             while True:
@@ -170,8 +151,8 @@ async def mcp_sse(
                     )
                     yield f"event: message\ndata: {json.dumps(message)}\n\n"
                 except asyncio.TimeoutError:
-                    # Send keepalive ping
-                    yield f"event: ping\ndata: {json.dumps({'type': 'ping', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+                    # Send keepalive comment (: prefix means comment in SSE)
+                    yield ": keepalive\n\n"
 
         except asyncio.CancelledError:
             logger.info(f"MCP SSE connection cancelled: {connection_id}")
@@ -189,9 +170,121 @@ async def mcp_sse(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Connection-Id": connection_id,
+            "X-Accel-Buffering": "no",
+            "Mcp-Session-Id": connection_id,
         },
     )
+
+
+@router.post("/sse")
+async def mcp_sse_post(
+    request: Request,
+    mcp_session_id: Optional[str] = Header(None, alias="Mcp-Session-Id"),
+    authorization: Optional[str] = Header(None),
+):
+    """Handle MCP messages via POST to SSE endpoint.
+
+    This is the Streamable HTTP transport - clients POST JSON-RPC messages
+    to the same endpoint and receive responses.
+    """
+    if not validate_token(authorization):
+        raise HTTPException(status_code=401, detail="Invalid or missing API token")
+
+    # Parse the request body
+    try:
+        body = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+
+    mcp = await get_mcp_instance()
+
+    # Handle the MCP request
+    mcp_request = MCPRequest(**body)
+
+    try:
+        result = None
+        error = None
+
+        if mcp_request.method == "initialize":
+            # Handle initialization
+            result = {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {"listChanged": True},
+                },
+                "serverInfo": {
+                    "name": "nexus-dashboard-mcp",
+                    "version": "1.0.0",
+                },
+            }
+
+        elif mcp_request.method == "notifications/initialized":
+            # Client acknowledging initialization - no response needed
+            return {}
+
+        elif mcp_request.method == "tools/list":
+            # List available tools
+            tools = []
+            for operation in mcp.operations:
+                tool = mcp._build_tool_from_operation(operation)
+                tools.append({
+                    "name": tool.name,
+                    "description": tool.description,
+                    "inputSchema": tool.inputSchema,
+                })
+            result = {"tools": tools}
+
+        elif mcp_request.method == "tools/call":
+            # Execute a tool
+            params = mcp_request.params or {}
+            tool_name = params.get("name", "")
+            tool_arguments = params.get("arguments", {})
+
+            if not tool_name:
+                error = {"code": -32602, "message": "Missing tool name"}
+            else:
+                # Call the tool handler
+                contents = await mcp.handle_call_tool(tool_name, tool_arguments)
+
+                # Extract text from TextContent responses
+                result = {
+                    "content": [
+                        {"type": c.type, "text": c.text}
+                        for c in contents
+                    ]
+                }
+
+        elif mcp_request.method == "ping":
+            # Respond to ping
+            result = {"pong": True}
+
+        else:
+            error = {
+                "code": -32601,
+                "message": f"Method not found: {mcp_request.method}",
+            }
+
+        # Build response
+        response = MCPResponse(
+            jsonrpc="2.0",
+            id=mcp_request.id,
+            result=result,
+            error=error,
+        )
+
+        # Also send to SSE connection if available
+        if mcp_session_id and mcp_session_id in _sse_connections:
+            await _sse_connections[mcp_session_id].put(response.model_dump())
+
+        return response.model_dump()
+
+    except Exception as e:
+        logger.error(f"MCP message handling error: {e}", exc_info=True)
+        return MCPResponse(
+            jsonrpc="2.0",
+            id=mcp_request.id,
+            error={"code": -32603, "message": str(e)},
+        ).model_dump()
 
 
 @router.post("/message")
