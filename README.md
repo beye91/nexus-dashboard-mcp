@@ -145,13 +145,20 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 
 #### Remote Deployment (MCP server on different host)
 
-For connecting to an MCP server running on a remote host, use the HTTP/SSE transport:
+For connecting to an MCP server running on a remote host, use the `mcp-remote` bridge package:
+
+**Prerequisites:** Node.js 18+ installed on your local machine.
 
 ```json
 {
   "mcpServers": {
     "nexus-dashboard": {
-      "url": "http://YOUR_SERVER_IP:8002/mcp/sse"
+      "command": "npx",
+      "args": [
+        "mcp-remote@latest",
+        "http://YOUR_SERVER_IP:8002/mcp/sse",
+        "--allow-http"
+      ]
     }
   }
 }
@@ -167,16 +174,20 @@ Set the `MCP_API_TOKEN` environment variable in your deployment to require authe
 MCP_API_TOKEN=your-secure-token-here
 ```
 
-Then configure Claude Desktop with the token:
+Then configure Claude Desktop with the token in the header:
 
 ```json
 {
   "mcpServers": {
     "nexus-dashboard": {
-      "url": "http://YOUR_SERVER_IP:8002/mcp/sse",
-      "headers": {
-        "Authorization": "Bearer your-secure-token-here"
-      }
+      "command": "npx",
+      "args": [
+        "mcp-remote@latest",
+        "http://YOUR_SERVER_IP:8002/mcp/sse",
+        "--allow-http",
+        "--header",
+        "Authorization: Bearer your-secure-token-here"
+      ]
     }
   }
 }
