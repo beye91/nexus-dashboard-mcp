@@ -52,7 +52,7 @@ The web UI provides comprehensive management capabilities for the MCP server:
 ### Prerequisites
 
 - **Docker** 20.10+ and Docker Compose 2.0+
-- **Cisco Nexus Dashboard** with NDFC 12.x (requires nexus-bot 4.1+)
+- **Cisco Nexus Dashboard** 4.1+ with NDFC 12.x
 - **Python** 3.11+ (for local development)
 - **Node.js** 18+ (for remote MCP access via mcp-remote)
 
