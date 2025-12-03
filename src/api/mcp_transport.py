@@ -130,9 +130,9 @@ async def mcp_sse_get(
     async def event_generator():
         """Generate SSE events."""
         try:
-            # Send endpoint event first (required by mcp-remote)
+            # Send endpoint event first (required by MCP SSE transport spec)
             # This tells the client where to POST messages
-            yield f"event: endpoint\ndata: /mcp/sse\n\n"
+            yield f"event: endpoint\ndata: /mcp/message\n\n"
 
             # Send server capabilities
             mcp = await get_mcp_instance()
@@ -289,25 +289,32 @@ async def mcp_sse_post(
 
 @router.post("/message")
 async def mcp_message(
-    request: MCPRequest,
+    request: Request,
     connection_id: Optional[str] = Header(None, alias="X-Connection-Id"),
     authorization: Optional[str] = Header(None),
 ):
-    """Handle MCP protocol messages.
+    """Handle MCP protocol messages (SSE transport message endpoint).
 
-    This endpoint receives MCP requests from Claude Desktop and returns
-    responses. It also sends responses to the SSE connection if available.
+    This endpoint receives MCP requests from clients using SSE transport
+    and returns responses directly via HTTP.
     """
     if not validate_token(authorization):
         raise HTTPException(status_code=401, detail="Invalid or missing API token")
 
+    # Parse the request body
+    try:
+        body = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+
+    mcp_request = MCPRequest(**body)
     mcp = await get_mcp_instance()
 
     try:
         result = None
         error = None
 
-        if request.method == "initialize":
+        if mcp_request.method == "initialize":
             # Handle initialization
             result = {
                 "protocolVersion": "2024-11-05",
@@ -320,7 +327,11 @@ async def mcp_message(
                 },
             }
 
-        elif request.method == "tools/list":
+        elif mcp_request.method == "notifications/initialized":
+            # Client acknowledging initialization - return empty accepted response
+            return {}
+
+        elif mcp_request.method == "tools/list":
             # List available tools
             tools = []
             for operation in mcp.operations:
@@ -332,9 +343,9 @@ async def mcp_message(
                 })
             result = {"tools": tools}
 
-        elif request.method == "tools/call":
+        elif mcp_request.method == "tools/call":
             # Execute a tool
-            params = request.params or {}
+            params = mcp_request.params or {}
             tool_name = params.get("name", "")
             tool_arguments = params.get("arguments", {})
 
@@ -352,20 +363,20 @@ async def mcp_message(
                     ]
                 }
 
-        elif request.method == "ping":
+        elif mcp_request.method == "ping":
             # Respond to ping
             result = {"pong": True}
 
         else:
             error = {
                 "code": -32601,
-                "message": f"Method not found: {request.method}",
+                "message": f"Method not found: {mcp_request.method}",
             }
 
         # Build response
         response = MCPResponse(
             jsonrpc="2.0",
-            id=request.id,
+            id=mcp_request.id,
             result=result,
             error=error,
         )
@@ -380,7 +391,7 @@ async def mcp_message(
         logger.error(f"MCP message handling error: {e}", exc_info=True)
         return MCPResponse(
             jsonrpc="2.0",
-            id=request.id,
+            id=mcp_request.id,
             error={"code": -32603, "message": str(e)},
         ).model_dump()
 
