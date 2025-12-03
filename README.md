@@ -432,6 +432,13 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - **FastMCP** - For the excellent MCP framework
 - **Community Contributors** - Thank you for your contributions!
 
+## 👥 Contributors
+
+<!-- ALL-CONTRIBUTORS-LIST:START -->
+| [<img src="https://github.com/beye91.png" width="100px;" alt="beye91"/><br /><sub><b>Christian Beye</b></sub>](https://github.com/beye91)<br />💻 📖 🚧 | [<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Anthropic_logo.svg/200px-Anthropic_logo.svg.png" width="100px;" alt="Claude"/><br /><sub><b>Claude (Anthropic)</b></sub>](https://claude.ai)<br />💻 🤖 |
+| :---: | :---: |
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
 ## 📞 Support
 
 - **Documentation**: [GitHub Wiki](https://github.com/beye91/nexus-dashboard-mcp/wiki)
