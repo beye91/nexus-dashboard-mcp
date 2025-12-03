@@ -151,20 +151,20 @@ export default function SearchableOperationsDropdown({
   // Get method color
   const getMethodColor = (method: string) => {
     switch (method.toUpperCase()) {
-      case 'GET': return 'text-green-400';
-      case 'POST': return 'text-blue-400';
-      case 'PUT': return 'text-yellow-400';
-      case 'PATCH': return 'text-orange-400';
-      case 'DELETE': return 'text-red-400';
-      default: return 'text-gray-400';
+      case 'GET': return 'text-green-600';
+      case 'POST': return 'text-blue-600';
+      case 'PUT': return 'text-yellow-600';
+      case 'PATCH': return 'text-orange-600';
+      case 'DELETE': return 'text-red-600';
+      default: return 'text-gray-600';
     }
   };
 
   if (loading) {
     return (
-      <div className="border border-gray-700 rounded-lg p-4 bg-gray-900">
+      <div className="border border-gray-200 rounded-lg p-4 bg-white">
         <div className="animate-pulse flex items-center">
-          <div className="h-4 w-32 bg-gray-700 rounded"></div>
+          <div className="h-4 w-32 bg-gray-200 rounded"></div>
         </div>
       </div>
     );
@@ -172,8 +172,8 @@ export default function SearchableOperationsDropdown({
 
   if (error) {
     return (
-      <div className="border border-red-800 rounded-lg p-4 bg-gray-900">
-        <p className="text-red-400">{error}</p>
+      <div className="border border-red-200 rounded-lg p-4 bg-white">
+        <p className="text-red-600">{error}</p>
       </div>
     );
   }
@@ -182,17 +182,17 @@ export default function SearchableOperationsDropdown({
     <div ref={dropdownRef} className="relative">
       {/* Selected Operations Display */}
       <div
-        className={`border rounded-lg p-3 bg-gray-900 cursor-pointer transition-colors ${
-          disabled ? 'border-gray-700 opacity-50 cursor-not-allowed' : 'border-gray-700 hover:border-gray-600'
-        } ${isOpen ? 'border-blue-500' : ''}`}
+        className={`border rounded-lg p-3 bg-white cursor-pointer transition-colors ${
+          disabled ? 'border-gray-200 opacity-50 cursor-not-allowed' : 'border-gray-300 hover:border-gray-400'
+        } ${isOpen ? 'border-blue-500 ring-2 ring-blue-100' : ''}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
       >
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-gray-400">
+          <span className="text-sm text-gray-600">
             {selectedCount} of {totalOperations} operations selected
           </span>
           <svg
-            className={`w-5 h-5 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            className={`w-5 h-5 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -207,20 +207,20 @@ export default function SearchableOperationsDropdown({
             {selectedOperations.slice(0, 5).map(opName => (
               <span
                 key={opName}
-                className="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-900 text-blue-200 border border-blue-700"
+                className="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-700 border border-blue-200"
                 onClick={e => {
                   e.stopPropagation();
                   removeOperation(opName);
                 }}
               >
                 {opName}
-                <svg className="w-3 h-3 ml-1 cursor-pointer hover:text-blue-100" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="w-3 h-3 ml-1 cursor-pointer hover:text-blue-900" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
               </span>
             ))}
             {selectedCount > 5 && (
-              <span className="text-xs text-gray-400 self-center">+{selectedCount - 5} more</span>
+              <span className="text-xs text-gray-500 self-center">+{selectedCount - 5} more</span>
             )}
           </div>
         )}
@@ -228,23 +228,23 @@ export default function SearchableOperationsDropdown({
 
       {/* Dropdown Panel */}
       {isOpen && !disabled && (
-        <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl">
           {/* Search Input */}
-          <div className="p-3 border-b border-gray-700">
+          <div className="p-3 border-b border-gray-200">
             <input
               ref={searchInputRef}
               type="text"
               placeholder="Search operations..."
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
 
           {/* Select All / Clear All */}
-          <div className="px-3 py-2 border-b border-gray-700 flex justify-between items-center">
+          <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center">
             <button
-              className="text-xs text-blue-400 hover:text-blue-300"
+              className="text-xs text-blue-600 hover:text-blue-800"
               onClick={toggleAll}
             >
               {selectedCount === totalOperations ? 'Clear All' : 'Select All'}
@@ -263,28 +263,28 @@ export default function SearchableOperationsDropdown({
               const someGroupSelected = groupSelected > 0 && groupSelected < ops.length;
 
               return (
-                <div key={apiName} className="border-b border-gray-800 last:border-b-0">
+                <div key={apiName} className="border-b border-gray-100 last:border-b-0">
                   {/* Group Header */}
                   <div
-                    className="flex items-center justify-between px-3 py-2 bg-gray-800 cursor-pointer hover:bg-gray-750"
+                    className="flex items-center justify-between px-3 py-2 bg-gray-50 cursor-pointer hover:bg-gray-100"
                     onClick={() => toggleGroupExpansion(apiName)}
                   >
                     <div className="flex items-center space-x-2">
                       <svg
-                        className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                        className={`w-4 h-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
-                      <span className="text-sm font-medium text-white">{apiName}</span>
+                      <span className="text-sm font-medium text-gray-900">{apiName}</span>
                       <span className="text-xs text-gray-500">({ops.length})</span>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <span className="text-xs text-gray-400">{groupSelected}/{ops.length}</span>
+                      <span className="text-xs text-gray-500">{groupSelected}/{ops.length}</span>
                       <button
-                        className="text-xs text-blue-400 hover:text-blue-300"
+                        className="text-xs text-blue-600 hover:text-blue-800"
                         onClick={e => {
                           e.stopPropagation();
                           toggleGroup(apiName, ops);
@@ -297,7 +297,7 @@ export default function SearchableOperationsDropdown({
 
                   {/* Group Operations */}
                   {isExpanded && (
-                    <div className="bg-gray-900">
+                    <div className="bg-white">
                       {ops.map(op => {
                         const isSelected = selectedOperations.includes(op.name);
                         return (
@@ -305,8 +305,8 @@ export default function SearchableOperationsDropdown({
                             key={op.name}
                             className={`flex items-center px-6 py-2 cursor-pointer border-l-2 transition-colors ${
                               isSelected
-                                ? 'bg-blue-900/20 border-blue-500'
-                                : 'border-transparent hover:bg-gray-800'
+                                ? 'bg-blue-50 border-blue-500'
+                                : 'border-transparent hover:bg-gray-50'
                             }`}
                             onClick={() => toggleOperation(op.name)}
                           >
@@ -314,14 +314,14 @@ export default function SearchableOperationsDropdown({
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => {}}
-                              className="mr-3 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500"
+                              className="mr-3 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center space-x-2">
                                 <span className={`text-xs font-mono ${getMethodColor(op.method)}`}>
                                   {op.method}
                                 </span>
-                                <span className="text-sm text-white truncate">{op.name}</span>
+                                <span className="text-sm text-gray-900 truncate">{op.name}</span>
                               </div>
                               <p className="text-xs text-gray-500 truncate">{op.path}</p>
                             </div>

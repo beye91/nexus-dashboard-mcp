@@ -250,32 +250,32 @@ export default function SecurityPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950">
+    <div className="min-h-screen bg-gray-50">
       <Navigation />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
-          <h2 className="text-2xl font-bold text-white mb-2">Security Settings</h2>
-          <p className="text-gray-400">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Security Settings</h2>
+          <p className="text-gray-600">
             Manage users, roles, and security configuration for the MCP server
           </p>
         </div>
 
         {/* Error/Success Messages */}
         {error && (
-          <div className="mb-6 bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-md">
+          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
             {error}
-            <button onClick={() => setError(null)} className="float-right hover:text-red-100">&times;</button>
+            <button onClick={() => setError(null)} className="float-right hover:text-red-900">&times;</button>
           </div>
         )}
         {success && (
-          <div className="mb-6 bg-green-900/50 border border-green-700 text-green-200 px-4 py-3 rounded-md">
+          <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md">
             {success}
           </div>
         )}
 
         {/* Tabs */}
-        <div className="border-b border-gray-700 mb-6">
+        <div className="border-b border-gray-200 mb-6">
           <nav className="-mb-px flex space-x-8">
             {[
               { id: 'users' as TabType, label: 'Users', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
@@ -287,8 +287,8 @@ export default function SecurityPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center py-4 px-1 border-b-2 text-sm font-medium transition-colors ${
                   activeTab === tab.id
-                    ? 'border-blue-500 text-blue-400'
-                    : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-600'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -302,8 +302,8 @@ export default function SecurityPage() {
 
         {loading ? (
           <div className="text-center py-12">
-            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-500 border-r-transparent"></div>
-            <p className="mt-2 text-gray-400">Loading...</p>
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
+            <p className="mt-2 text-gray-600">Loading...</p>
           </div>
         ) : (
           <>
@@ -311,7 +311,7 @@ export default function SecurityPage() {
             {activeTab === 'users' && (
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold text-white">User Management</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">User Management</h3>
                   <button
                     onClick={() => openUserModal()}
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center"
@@ -323,60 +323,60 @@ export default function SecurityPage() {
                   </button>
                 </div>
 
-                <div className="bg-gray-900 rounded-lg overflow-hidden border border-gray-800">
-                  <table className="min-w-full divide-y divide-gray-800">
-                    <thead className="bg-gray-800">
+                <div className="bg-white rounded-lg overflow-hidden border border-gray-200 shadow">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Username</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Email</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Roles</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Edit Mode</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Roles</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Edit Mode</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-800">
+                    <tbody className="bg-white divide-y divide-gray-200">
                       {users.map((user) => (
-                        <tr key={user.id} className="hover:bg-gray-800/50">
+                        <tr key={user.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center">
-                              <div className="h-8 w-8 rounded-full bg-blue-900 flex items-center justify-center text-blue-200 font-medium">
+                              <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-medium">
                                 {user.username[0].toUpperCase()}
                               </div>
                               <div className="ml-3">
-                                <p className="text-sm font-medium text-white">{user.username}</p>
+                                <p className="text-sm font-medium text-gray-900">{user.username}</p>
                                 {user.is_superuser && (
-                                  <span className="text-xs text-yellow-400">Superuser</span>
+                                  <span className="text-xs text-yellow-600">Superuser</span>
                                 )}
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                             {user.email || '-'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex flex-wrap gap-1">
                               {user.roles.map((role) => (
-                                <span key={role.id} className="px-2 py-1 text-xs rounded bg-gray-700 text-gray-300">
+                                <span key={role.id} className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700">
                                   {role.name}
                                 </span>
                               ))}
-                              {user.roles.length === 0 && <span className="text-gray-500 text-sm">No roles</span>}
+                              {user.roles.length === 0 && <span className="text-gray-400 text-sm">No roles</span>}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 text-xs rounded ${user.has_edit_mode ? 'bg-green-900 text-green-300' : 'bg-gray-700 text-gray-400'}`}>
+                            <span className={`px-2 py-1 text-xs rounded ${user.has_edit_mode ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                               {user.has_edit_mode ? 'Enabled' : 'Disabled'}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 text-xs rounded ${user.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
+                            <span className={`px-2 py-1 text-xs rounded ${user.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                               {user.is_active ? 'Active' : 'Inactive'}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <button onClick={() => openUserModal(user)} className="text-blue-400 hover:text-blue-300 mr-3">Edit</button>
-                            <button onClick={() => handleDeleteUser(user.id)} className="text-red-400 hover:text-red-300">Delete</button>
+                            <button onClick={() => openUserModal(user)} className="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
+                            <button onClick={() => handleDeleteUser(user.id)} className="text-red-600 hover:text-red-800">Delete</button>
                           </td>
                         </tr>
                       ))}
@@ -397,7 +397,7 @@ export default function SecurityPage() {
             {activeTab === 'roles' && (
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold text-white">Role Management</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Role Management</h3>
                   <button
                     onClick={() => openRoleModal()}
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center"
@@ -411,19 +411,19 @@ export default function SecurityPage() {
 
                 <div className="grid gap-4">
                   {roles.map((role) => (
-                    <div key={role.id} className="bg-gray-900 rounded-lg p-6 border border-gray-800">
+                    <div key={role.id} className="bg-white rounded-lg p-6 border border-gray-200 shadow">
                       <div className="flex justify-between items-start">
                         <div>
                           <div className="flex items-center space-x-2">
-                            <h4 className="text-lg font-medium text-white">{role.name}</h4>
+                            <h4 className="text-lg font-medium text-gray-900">{role.name}</h4>
                             {role.is_system_role && (
-                              <span className="px-2 py-1 text-xs bg-yellow-900 text-yellow-300 rounded">System</span>
+                              <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-700 rounded">System</span>
                             )}
                             {role.edit_mode_enabled && (
-                              <span className="px-2 py-1 text-xs bg-green-900 text-green-300 rounded">Edit Mode</span>
+                              <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded">Edit Mode</span>
                             )}
                           </div>
-                          <p className="text-gray-400 text-sm mt-1">{role.description || 'No description'}</p>
+                          <p className="text-gray-600 text-sm mt-1">{role.description || 'No description'}</p>
                           <p className="text-gray-500 text-xs mt-2">
                             {role.operations_count} operations assigned
                           </p>
@@ -431,14 +431,14 @@ export default function SecurityPage() {
                         <div className="flex space-x-2">
                           <button
                             onClick={() => openRoleModal(role)}
-                            className="px-3 py-1 text-sm bg-gray-700 text-white rounded hover:bg-gray-600"
+                            className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
                           >
                             Edit
                           </button>
                           {!role.is_system_role && (
                             <button
                               onClick={() => handleDeleteRole(role.id)}
-                              className="px-3 py-1 text-sm bg-red-900 text-red-200 rounded hover:bg-red-800"
+                              className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
                             >
                               Delete
                             </button>
@@ -460,22 +460,22 @@ export default function SecurityPage() {
             {activeTab === 'settings' && (
               <div className="space-y-6">
                 {/* Global Edit Mode Toggle */}
-                <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
+                <div className="bg-white rounded-lg p-6 border border-gray-200 shadow">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-white mb-2">Global Edit Mode</h3>
-                      <p className="text-sm text-gray-400">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Global Edit Mode</h3>
+                      <p className="text-sm text-gray-600">
                         Enable or disable write operations on Nexus Dashboard clusters globally.
                         This affects users without specific role-based edit permissions.
                       </p>
-                      <div className="mt-4 p-4 bg-yellow-900/30 border border-yellow-700 rounded-md">
+                      <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
                         <div className="flex">
-                          <svg className="h-5 w-5 text-yellow-400 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <svg className="h-5 w-5 text-yellow-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                           </svg>
                           <div>
-                            <p className="text-sm font-medium text-yellow-300">Warning</p>
-                            <p className="text-sm text-yellow-200/70 mt-1">
+                            <p className="text-sm font-medium text-yellow-800">Warning</p>
+                            <p className="text-sm text-yellow-700 mt-1">
                               Enabling edit mode allows write operations that can modify your Nexus Dashboard configuration.
                             </p>
                           </div>
@@ -485,8 +485,8 @@ export default function SecurityPage() {
                     <div className="ml-6">
                       <button
                         onClick={handleToggleEditMode}
-                        className={`relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 ${
-                          editMode ? 'bg-blue-600' : 'bg-gray-600'
+                        className={`relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                          editMode ? 'bg-blue-600' : 'bg-gray-200'
                         }`}
                         role="switch"
                         aria-checked={editMode}
@@ -497,7 +497,7 @@ export default function SecurityPage() {
                           }`}
                         />
                       </button>
-                      <p className="mt-2 text-sm font-medium text-gray-300 text-center">
+                      <p className="mt-2 text-sm font-medium text-gray-700 text-center">
                         {editMode ? 'Enabled' : 'Disabled'}
                       </p>
                     </div>
@@ -505,22 +505,22 @@ export default function SecurityPage() {
                 </div>
 
                 {/* Configuration Summary */}
-                <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
-                  <h3 className="text-lg font-semibold text-white mb-4">Configuration Summary</h3>
+                <div className="bg-white rounded-lg p-6 border border-gray-200 shadow">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Configuration Summary</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="border-l-4 border-blue-500 pl-4">
-                      <p className="text-sm font-medium text-gray-400">Global Edit Mode</p>
-                      <p className="text-2xl font-bold text-white mt-1">
+                      <p className="text-sm font-medium text-gray-500">Global Edit Mode</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1">
                         {editMode ? 'Enabled' : 'Disabled'}
                       </p>
                     </div>
                     <div className="border-l-4 border-green-500 pl-4">
-                      <p className="text-sm font-medium text-gray-400">Total Users</p>
-                      <p className="text-2xl font-bold text-white mt-1">{users.length}</p>
+                      <p className="text-sm font-medium text-gray-500">Total Users</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1">{users.length}</p>
                     </div>
                     <div className="border-l-4 border-purple-500 pl-4">
-                      <p className="text-sm font-medium text-gray-400">Total Roles</p>
-                      <p className="text-2xl font-bold text-white mt-1">{roles.length}</p>
+                      <p className="text-sm font-medium text-gray-500">Total Roles</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1">{roles.length}</p>
                     </div>
                   </div>
                 </div>
@@ -531,54 +531,54 @@ export default function SecurityPage() {
 
         {/* User Modal */}
         {showUserModal && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-            <div className="bg-gray-900 rounded-lg p-6 w-full max-w-md border border-gray-700">
-              <h3 className="text-lg font-semibold text-white mb-4">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md border border-gray-200 shadow-xl">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 {editingUser ? 'Edit User' : 'Create User'}
               </h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Username</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
                   <input
                     type="text"
                     value={userForm.username}
                     onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
                     disabled={!!editingUser}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white disabled:opacity-50"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900 disabled:opacity-50 disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Password {editingUser && '(leave empty to keep current)'}
                   </label>
                   <input
                     type="password"
                     value={userForm.password}
                     onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                   <input
                     type="email"
                     value={userForm.email}
                     onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Display Name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
                   <input
                     type="text"
                     value={userForm.display_name}
                     onChange={(e) => setUserForm({ ...userForm, display_name: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Roles</label>
-                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Roles</label>
+                  <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-200 rounded-md p-2">
                     {roles.map((role) => (
                       <label key={role.id} className="flex items-center">
                         <input
@@ -591,9 +591,9 @@ export default function SecurityPage() {
                               setUserForm({ ...userForm, role_ids: userForm.role_ids.filter(id => id !== role.id) });
                             }
                           }}
-                          className="mr-2 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500"
+                          className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
-                        <span className="text-sm text-gray-300">{role.name}</span>
+                        <span className="text-sm text-gray-700">{role.name}</span>
                       </label>
                     ))}
                   </div>
@@ -604,16 +604,16 @@ export default function SecurityPage() {
                       type="checkbox"
                       checked={userForm.is_superuser}
                       onChange={(e) => setUserForm({ ...userForm, is_superuser: e.target.checked })}
-                      className="mr-2 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500"
+                      className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <span className="text-sm text-gray-300">Superuser (full access)</span>
+                    <span className="text-sm text-gray-700">Superuser (full access)</span>
                   </label>
                 </div>
               </div>
               <div className="flex justify-end space-x-3 mt-6">
                 <button
                   onClick={() => { setShowUserModal(false); setEditingUser(null); resetUserForm(); }}
-                  className="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600"
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 border border-gray-300"
                 >
                   Cancel
                 </button>
@@ -630,29 +630,29 @@ export default function SecurityPage() {
 
         {/* Role Modal */}
         {showRoleModal && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-            <div className="bg-gray-900 rounded-lg p-6 w-full max-w-2xl border border-gray-700 max-h-[90vh] overflow-y-auto">
-              <h3 className="text-lg font-semibold text-white mb-4">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-2xl border border-gray-200 shadow-xl max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 {editingRole ? 'Edit Role' : 'Create Role'}
               </h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Role Name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Role Name</label>
                   <input
                     type="text"
                     value={roleForm.name}
                     onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })}
                     disabled={editingRole?.is_system_role}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white disabled:opacity-50"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900 disabled:opacity-50 disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                   <textarea
                     value={roleForm.description}
                     onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
                     rows={2}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
                 <div>
@@ -661,14 +661,14 @@ export default function SecurityPage() {
                       type="checkbox"
                       checked={roleForm.edit_mode_enabled}
                       onChange={(e) => setRoleForm({ ...roleForm, edit_mode_enabled: e.target.checked })}
-                      className="mr-2 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500"
+                      className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <span className="text-sm text-gray-300">Enable Edit Mode for this role</span>
+                    <span className="text-sm text-gray-700">Enable Edit Mode for this role</span>
                   </label>
                   <p className="text-xs text-gray-500 mt-1">Users with this role can perform write operations</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Allowed Operations</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Allowed Operations</label>
                   <SearchableOperationsDropdown
                     selectedOperations={roleForm.operations || []}
                     onChange={(ops) => setRoleForm({ ...roleForm, operations: ops })}
@@ -678,7 +678,7 @@ export default function SecurityPage() {
               <div className="flex justify-end space-x-3 mt-6">
                 <button
                   onClick={() => { setShowRoleModal(false); setEditingRole(null); resetRoleForm(); }}
-                  className="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600"
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 border border-gray-300"
                 >
                   Cancel
                 </button>
