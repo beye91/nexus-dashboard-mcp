@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Header, Request
@@ -39,7 +39,7 @@ _sse_connections: Dict[str, asyncio.Queue] = {}
 class MCPRequest(BaseModel):
     """MCP protocol request."""
     jsonrpc: str = "2.0"
-    id: Optional[str] = None
+    id: Optional[Union[str, int]] = None
     method: str
     params: Optional[Dict[str, Any]] = None
 
@@ -47,7 +47,7 @@ class MCPRequest(BaseModel):
 class MCPResponse(BaseModel):
     """MCP protocol response."""
     jsonrpc: str = "2.0"
-    id: Optional[str] = None
+    id: Optional[Union[str, int]] = None
     result: Optional[Any] = None
     error: Optional[Dict[str, Any]] = None
 
