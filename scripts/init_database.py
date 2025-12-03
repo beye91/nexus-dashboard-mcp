@@ -19,21 +19,34 @@ logger = logging.getLogger(__name__)
 
 
 async def main():
-    """Initialize database and optionally add default cluster."""
+    """Initialize database and optionally bootstrap default cluster.
+
+    NOTE: Environment variables are only used for initial bootstrap.
+    If a cluster already exists in the database, it will NOT be overwritten.
+    Use the Web UI to manage cluster credentials after initial setup.
+    """
     try:
         # Initialize database
         logger.info("Initializing database schema...")
         await init_db()
         logger.info("Database initialized successfully")
 
-        # Check if we should add credentials from environment
+        # Check if default cluster already exists
+        credential_manager = CredentialManager()
+        existing_cluster = await credential_manager.get_cluster("default")
+
+        if existing_cluster:
+            logger.info(f"Default cluster already exists: {existing_cluster.url}")
+            logger.info("Skipping environment variable bootstrap (use Web UI to modify)")
+            return
+
+        # Bootstrap from environment only if no cluster exists
         settings = get_settings()
 
         if settings.nexus_cluster_url and settings.nexus_username and settings.nexus_password:
-            logger.info("Found Nexus Dashboard credentials in environment")
-            logger.info(f"Adding default cluster: {settings.nexus_cluster_url}")
+            logger.info("No existing cluster found - bootstrapping from environment")
+            logger.info(f"Creating default cluster: {settings.nexus_cluster_url}")
 
-            credential_manager = CredentialManager()
             await credential_manager.store_credentials(
                 name="default",
                 url=settings.nexus_cluster_url,
@@ -42,12 +55,13 @@ async def main():
                 verify_ssl=settings.nexus_verify_ssl,
             )
 
-            logger.info("Default cluster credentials stored successfully")
+            logger.info("Default cluster created successfully")
+            logger.info("NOTE: Future changes should be made via Web UI, not .env file")
         else:
             logger.warning("No Nexus Dashboard credentials found in environment")
             logger.warning(
-                "Please set NEXUS_CLUSTER_URL, NEXUS_USERNAME, and NEXUS_PASSWORD "
-                "or add credentials manually"
+                "Please configure a cluster via the Web UI or set "
+                "NEXUS_CLUSTER_URL, NEXUS_USERNAME, and NEXUS_PASSWORD for first-time setup"
             )
 
     except Exception as e:
