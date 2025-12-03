@@ -19,6 +19,7 @@ from src.models.cluster import Cluster
 from src.models.security import SecurityConfig
 from src.services.credential_manager import CredentialManager
 from src.utils.encryption import decrypt_password
+from src.api.mcp_transport import router as mcp_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -30,11 +31,14 @@ app = FastAPI(
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:7001", "http://127.0.0.1:7001"],
+    allow_origins=["http://localhost:7001", "http://127.0.0.1:7001", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include MCP HTTP/SSE transport router
+app.include_router(mcp_router)
 
 # Pydantic models for request/response
 class ClusterCreate(BaseModel):

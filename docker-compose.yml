@@ -81,6 +81,9 @@ services:
       # Security
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-lGczu6Yzd2IrRrcJF3cOS8BsAOO6R-1761BRDusbCuM=}
 
+      # MCP Remote Access (optional - leave empty for open access)
+      MCP_API_TOKEN: ${MCP_API_TOKEN:-}
+
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:

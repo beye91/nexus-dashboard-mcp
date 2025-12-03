@@ -124,6 +124,8 @@ http://localhost:7001
 
 Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 
+#### Local Deployment (same machine as Docker)
+
 ```json
 {
   "mcpServers": {
@@ -136,6 +138,45 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
         "python",
         "src/main.py"
       ]
+    }
+  }
+}
+```
+
+#### Remote Deployment (MCP server on different host)
+
+For connecting to an MCP server running on a remote host, use the HTTP/SSE transport:
+
+```json
+{
+  "mcpServers": {
+    "nexus-dashboard": {
+      "url": "http://YOUR_SERVER_IP:8002/mcp/sse"
+    }
+  }
+}
+```
+
+Replace `YOUR_SERVER_IP` with your server's IP address (e.g., `192.168.1.213`).
+
+**Optional: Secure with API Token**
+
+Set the `MCP_API_TOKEN` environment variable in your deployment to require authentication:
+
+```env
+MCP_API_TOKEN=your-secure-token-here
+```
+
+Then configure Claude Desktop with the token:
+
+```json
+{
+  "mcpServers": {
+    "nexus-dashboard": {
+      "url": "http://YOUR_SERVER_IP:8002/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer your-secure-token-here"
+      }
     }
   }
 }
