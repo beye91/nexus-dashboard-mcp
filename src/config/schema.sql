@@ -65,7 +65,9 @@ CREATE TABLE IF NOT EXISTS users (
     api_token VARCHAR(64) UNIQUE,
     is_active BOOLEAN DEFAULT TRUE,
     is_superuser BOOLEAN DEFAULT FALSE,
-    auth_type VARCHAR(50) DEFAULT 'local',
+    auth_type VARCHAR(50) DEFAULT 'local',  -- 'local' or 'ldap'
+    ldap_dn VARCHAR(500),                   -- Distinguished Name for LDAP users
+    ldap_config_id INTEGER,                 -- References ldap_config(id) - added later
     last_login TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMP DEFAULT NOW() NOT NULL
@@ -109,6 +111,78 @@ CREATE TABLE IF NOT EXISTS user_sessions (
     created_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
 
+-- User-Cluster assignment (M:M) - Restrict which clusters a user can access
+CREATE TABLE IF NOT EXISTS user_clusters (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    cluster_id INTEGER NOT NULL REFERENCES clusters(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    UNIQUE(user_id, cluster_id)
+);
+
+-- ==================== LDAP Tables ====================
+
+-- LDAP Server Configuration
+CREATE TABLE IF NOT EXISTS ldap_config (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    is_enabled BOOLEAN DEFAULT FALSE,
+    is_primary BOOLEAN DEFAULT FALSE,
+    server_url VARCHAR(500) NOT NULL,
+    base_dn VARCHAR(500) NOT NULL,
+    bind_dn VARCHAR(500),
+    bind_password_encrypted TEXT,
+    use_ssl BOOLEAN DEFAULT FALSE,
+    use_starttls BOOLEAN DEFAULT FALSE,
+    verify_ssl BOOLEAN DEFAULT TRUE,
+    ca_certificate TEXT,
+    user_search_base VARCHAR(500),
+    user_search_filter VARCHAR(500) DEFAULT '(objectClass=person)',
+    user_object_class VARCHAR(100) DEFAULT 'person',
+    username_attribute VARCHAR(100) DEFAULT 'sAMAccountName',
+    email_attribute VARCHAR(100) DEFAULT 'mail',
+    display_name_attribute VARCHAR(100) DEFAULT 'displayName',
+    member_of_attribute VARCHAR(100) DEFAULT 'memberOf',
+    group_search_base VARCHAR(500),
+    group_search_filter VARCHAR(500) DEFAULT '(objectClass=group)',
+    group_object_class VARCHAR(100) DEFAULT 'group',
+    group_name_attribute VARCHAR(100) DEFAULT 'cn',
+    group_member_attribute VARCHAR(100) DEFAULT 'member',
+    sync_interval_minutes INTEGER DEFAULT 60,
+    auto_create_users BOOLEAN DEFAULT TRUE,
+    auto_sync_groups BOOLEAN DEFAULT TRUE,
+    default_role_id INTEGER REFERENCES roles(id) ON DELETE SET NULL,
+    last_sync_at TIMESTAMP,
+    last_sync_status VARCHAR(50),
+    last_sync_message TEXT,
+    last_sync_users_created INTEGER DEFAULT 0,
+    last_sync_users_updated INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+-- LDAP Group to Role Mapping
+CREATE TABLE IF NOT EXISTS ldap_group_role_mappings (
+    id SERIAL PRIMARY KEY,
+    ldap_config_id INTEGER NOT NULL REFERENCES ldap_config(id) ON DELETE CASCADE,
+    ldap_group_dn VARCHAR(500) NOT NULL,
+    ldap_group_name VARCHAR(255) NOT NULL,
+    role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    UNIQUE(ldap_config_id, ldap_group_dn, role_id)
+);
+
+-- LDAP Group to Cluster Mapping
+CREATE TABLE IF NOT EXISTS ldap_group_cluster_mappings (
+    id SERIAL PRIMARY KEY,
+    ldap_config_id INTEGER NOT NULL REFERENCES ldap_config(id) ON DELETE CASCADE,
+    ldap_group_dn VARCHAR(500) NOT NULL,
+    ldap_group_name VARCHAR(255) NOT NULL,
+    cluster_id INTEGER NOT NULL REFERENCES clusters(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    UNIQUE(ldap_config_id, ldap_group_dn, cluster_id)
+);
+
 -- ==================== Indexes ====================
 
 -- Audit log indexes
@@ -141,6 +215,25 @@ CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_session_token ON user_sessions(session_token);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON user_sessions(expires_at);
+
+-- User clusters indexes
+CREATE INDEX IF NOT EXISTS idx_user_clusters_user_id ON user_clusters(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_clusters_cluster_id ON user_clusters(cluster_id);
+
+-- LDAP config indexes
+CREATE INDEX IF NOT EXISTS idx_ldap_config_enabled ON ldap_config(is_enabled);
+CREATE INDEX IF NOT EXISTS idx_ldap_config_primary ON ldap_config(is_primary);
+
+-- LDAP group mappings indexes
+CREATE INDEX IF NOT EXISTS idx_ldap_group_role_config ON ldap_group_role_mappings(ldap_config_id);
+CREATE INDEX IF NOT EXISTS idx_ldap_group_role_role ON ldap_group_role_mappings(role_id);
+CREATE INDEX IF NOT EXISTS idx_ldap_group_cluster_config ON ldap_group_cluster_mappings(ldap_config_id);
+CREATE INDEX IF NOT EXISTS idx_ldap_group_cluster_cluster ON ldap_group_cluster_mappings(cluster_id);
+
+-- User LDAP fields indexes
+CREATE INDEX IF NOT EXISTS idx_users_ldap_dn ON users(ldap_dn);
+CREATE INDEX IF NOT EXISTS idx_users_ldap_config_id ON users(ldap_config_id);
+CREATE INDEX IF NOT EXISTS idx_users_auth_type ON users(auth_type);
 
 -- ==================== Default Data ====================
 

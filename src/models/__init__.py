@@ -4,6 +4,8 @@ from .api_endpoint import APIEndpoint
 from .audit import AuditLog
 from .user import User, UserSession
 from .role import Role, RoleOperation, UserRole
+from .user_cluster import UserCluster
+from .ldap_config import LDAPConfig, LDAPGroupRoleMapping, LDAPGroupClusterMapping
 
 __all__ = [
     "Cluster",
@@ -15,4 +17,8 @@ __all__ = [
     "Role",
     "RoleOperation",
     "UserRole",
+    "UserCluster",
+    "LDAPConfig",
+    "LDAPGroupRoleMapping",
+    "LDAPGroupClusterMapping",
 ]

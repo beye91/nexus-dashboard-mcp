@@ -1,7 +1,7 @@
 """User and UserSession models for authentication."""
 
 from datetime import datetime
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional, Set, TYPE_CHECKING
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship, Mapped
@@ -11,6 +11,7 @@ from src.config.database import Base
 
 if TYPE_CHECKING:
     from src.models.role import Role
+    from src.models.cluster import Cluster
 
 
 class User(Base):
@@ -28,6 +29,8 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
     auth_type = Column(String(50), default="local")  # 'local' or 'ldap'
+    ldap_dn = Column(String(500))  # Distinguished Name for LDAP users
+    ldap_config_id = Column(Integer, ForeignKey("ldap_config.id", ondelete="SET NULL"))
     last_login = Column(DateTime)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
@@ -45,15 +48,23 @@ class User(Base):
         cascade="all, delete-orphan",
         lazy="selectin"
     )
+    clusters = relationship(
+        "Cluster",
+        secondary="user_clusters",
+        back_populates="users",
+        lazy="selectin"
+    )
+    ldap_config = relationship("LDAPConfig", foreign_keys=[ldap_config_id])
 
     def __repr__(self) -> str:
         return f"<User(username='{self.username}', active={self.is_active})>"
 
-    def to_dict(self, include_roles: bool = True) -> dict:
+    def to_dict(self, include_roles: bool = True, include_clusters: bool = True) -> dict:
         """Convert user to dictionary (excluding sensitive data).
 
         Args:
             include_roles: Whether to include role details
+            include_clusters: Whether to include cluster details
 
         Returns:
             Dictionary representation of user
@@ -66,6 +77,8 @@ class User(Base):
             "is_active": self.is_active,
             "is_superuser": self.is_superuser,
             "auth_type": self.auth_type,
+            "ldap_dn": self.ldap_dn if self.auth_type == "ldap" else None,
+            "has_edit_mode": self.has_edit_mode(),
             "last_login": self.last_login.isoformat() if self.last_login else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -74,6 +87,10 @@ class User(Base):
             data["roles"] = [role.to_dict(include_operations=False) for role in self.roles]
         else:
             data["roles"] = []
+        if include_clusters and self.clusters:
+            data["clusters"] = [{"id": c.id, "name": c.name} for c in self.clusters]
+        else:
+            data["clusters"] = []
         return data
 
     def get_all_operations(self) -> set:
@@ -110,6 +127,34 @@ class User(Base):
         if self.is_superuser:
             return True
         return operation_name in self.get_all_operations()
+
+    def get_allowed_cluster_ids(self) -> Set[int]:
+        """Get set of cluster IDs this user can access.
+
+        Returns:
+            Set of cluster IDs. Empty set means:
+            - For superusers: access to all clusters
+            - For regular users: depends on configuration
+        """
+        return {c.id for c in self.clusters} if self.clusters else set()
+
+    def can_access_cluster(self, cluster_id: int) -> bool:
+        """Check if user can access a specific cluster.
+
+        Args:
+            cluster_id: ID of the cluster to check
+
+        Returns:
+            True if user can access the cluster
+        """
+        if self.is_superuser:
+            return True
+        allowed = self.get_allowed_cluster_ids()
+        if not allowed:
+            # No clusters assigned - depends on policy
+            # For now, deny access if no clusters assigned
+            return False
+        return cluster_id in allowed
 
 
 class UserSession(Base):

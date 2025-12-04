@@ -12,8 +12,21 @@ from sqlalchemy.orm import selectinload
 from src.config.database import get_db
 from src.models.user import User, UserSession
 from src.models.role import Role, UserRole
+from src.models.user_cluster import UserCluster
+from src.models.cluster import Cluster
 
 logger = logging.getLogger(__name__)
+
+# Lazy import LDAP service to avoid circular imports
+_ldap_service = None
+
+def get_ldap_service():
+    """Get or create LDAP service instance."""
+    global _ldap_service
+    if _ldap_service is None:
+        from src.services.ldap_service import LDAPService
+        _ldap_service = LDAPService()
+    return _ldap_service
 
 
 class UserService:
@@ -132,7 +145,7 @@ class UserService:
             return user
 
     async def get_user(self, user_id: int) -> Optional[User]:
-        """Get user by ID with roles loaded.
+        """Get user by ID with roles and clusters loaded.
 
         Args:
             user_id: User ID
@@ -143,13 +156,16 @@ class UserService:
         async with self.db.session() as session:
             result = await session.execute(
                 select(User)
-                .options(selectinload(User.roles).selectinload(Role.operations))
+                .options(
+                    selectinload(User.roles).selectinload(Role.operations),
+                    selectinload(User.clusters),
+                )
                 .where(User.id == user_id)
             )
             return result.scalar_one_or_none()
 
     async def get_user_by_username(self, username: str) -> Optional[User]:
-        """Get user by username with roles loaded.
+        """Get user by username with roles and clusters loaded.
 
         Args:
             username: Username to find
@@ -160,7 +176,10 @@ class UserService:
         async with self.db.session() as session:
             result = await session.execute(
                 select(User)
-                .options(selectinload(User.roles).selectinload(Role.operations))
+                .options(
+                    selectinload(User.roles).selectinload(Role.operations),
+                    selectinload(User.clusters),
+                )
                 .where(User.username == username)
             )
             return result.scalar_one_or_none()
@@ -180,7 +199,10 @@ class UserService:
         async with self.db.session() as session:
             result = await session.execute(
                 select(User)
-                .options(selectinload(User.roles).selectinload(Role.operations))
+                .options(
+                    selectinload(User.roles).selectinload(Role.operations),
+                    selectinload(User.clusters),
+                )
                 .where(User.api_token == api_token, User.is_active == True)
             )
             return result.scalar_one_or_none()
@@ -195,7 +217,10 @@ class UserService:
             List of User instances
         """
         async with self.db.session() as session:
-            query = select(User).options(selectinload(User.roles))
+            query = select(User).options(
+                selectinload(User.roles),
+                selectinload(User.clusters),
+            )
             if active_only:
                 query = query.where(User.is_active == True)
             query = query.order_by(User.username)
@@ -301,6 +326,11 @@ class UserService:
     async def authenticate(self, username: str, password: str) -> Optional[User]:
         """Authenticate user with username and password.
 
+        Authentication flow:
+        1. Try local authentication first (always)
+        2. If local fails and LDAP is enabled, try LDAP
+        3. If LDAP succeeds, auto-create/update local user with auth_type='ldap'
+
         Args:
             username: Username
             password: Plain text password
@@ -308,30 +338,110 @@ class UserService:
         Returns:
             User instance if authenticated, None otherwise
         """
+        # Step 1: Try local authentication first
         user = await self.get_user_by_username(username)
-        if not user:
-            logger.warning(f"Authentication failed: user '{username}' not found")
-            return None
 
-        if not user.is_active:
-            logger.warning(f"Authentication failed: user '{username}' is inactive")
-            return None
+        if user:
+            if not user.is_active:
+                logger.warning(f"Authentication failed: user '{username}' is inactive")
+                return None
 
-        if not self.verify_password(password, user.password_hash):
-            logger.warning(f"Authentication failed: invalid password for '{username}'")
-            return None
+            # For local users, verify password directly
+            if user.auth_type == "local":
+                if self.verify_password(password, user.password_hash):
+                    await self._update_last_login(user.id)
+                    logger.info(f"Local user authenticated: {username}")
+                    return user
+                else:
+                    logger.warning(f"Authentication failed: invalid password for local user '{username}'")
+                    return None
 
-        # Update last login
+            # For LDAP users, verify against LDAP
+            elif user.auth_type == "ldap":
+                ldap_service = get_ldap_service()
+                if ldap_service.is_available():
+                    success, user_info = await ldap_service.authenticate(username, password)
+                    if success:
+                        await self._update_last_login(user.id)
+                        logger.info(f"LDAP user authenticated: {username}")
+                        return user
+                    else:
+                        logger.warning(f"LDAP authentication failed for: {username}")
+                        return None
+                else:
+                    logger.warning(f"LDAP not available for user: {username}")
+                    return None
+
+        # Step 2: User not found locally, try LDAP if available
+        ldap_service = get_ldap_service()
+        if ldap_service.is_available():
+            success, user_info = await ldap_service.authenticate(username, password)
+            if success and user_info:
+                # Auto-create user from LDAP
+                user = await self._create_ldap_user(user_info)
+                if user:
+                    await self._update_last_login(user.id)
+                    logger.info(f"New LDAP user authenticated and created: {username}")
+                    return user
+
+        logger.warning(f"Authentication failed: user '{username}' not found")
+        return None
+
+    async def _update_last_login(self, user_id: int) -> None:
+        """Update last login timestamp for user."""
         async with self.db.session() as session:
             result = await session.execute(
-                select(User).where(User.id == user.id)
+                select(User).where(User.id == user_id)
             )
-            db_user = result.scalar_one()
-            db_user.last_login = datetime.utcnow()
-            await session.commit()
+            db_user = result.scalar_one_or_none()
+            if db_user:
+                db_user.last_login = datetime.utcnow()
+                await session.commit()
 
-        logger.info(f"User authenticated: {username}")
-        return user
+    async def _create_ldap_user(self, user_info: dict) -> Optional[User]:
+        """Create a local user from LDAP authentication info.
+
+        Args:
+            user_info: Dictionary with dn, username, email, display_name, groups, ldap_config_id
+
+        Returns:
+            Created User instance or None on error
+        """
+        try:
+            async with self.db.session() as session:
+                # Generate a random password hash (LDAP users can't use local auth)
+                dummy_password = self.hash_password(secrets.token_hex(32))
+
+                user = User(
+                    username=user_info["username"],
+                    password_hash=dummy_password,
+                    email=user_info.get("email"),
+                    display_name=user_info.get("display_name") or user_info["username"],
+                    auth_type="ldap",
+                    ldap_dn=user_info.get("dn"),
+                    ldap_config_id=user_info.get("ldap_config_id"),
+                    is_active=True,
+                    api_token=self.generate_api_token(),
+                )
+                session.add(user)
+                await session.commit()
+                await session.refresh(user)
+
+                logger.info(f"Created LDAP user: {user_info['username']}")
+
+                # Apply group mappings if groups provided
+                if user_info.get("groups") and user_info.get("ldap_config_id"):
+                    ldap_service = get_ldap_service()
+                    await ldap_service._apply_group_mappings(
+                        user.id,
+                        user_info["ldap_config_id"],
+                        user_info["groups"],
+                    )
+
+                return await self.get_user(user.id)
+        except Exception as e:
+            logger.error(f"Failed to create LDAP user: {e}")
+            return None
 
     # ==================== Session Management ====================
 
@@ -509,3 +619,112 @@ class UserService:
         async with self.db.session() as session:
             result = await session.execute(select(User).limit(1))
             return result.scalar_one_or_none() is not None
+
+    # ==================== Cluster Assignment ====================
+
+    async def assign_clusters(self, user_id: int, cluster_ids: List[int]) -> Optional[User]:
+        """Assign clusters to a user (replaces existing cluster assignments).
+
+        Args:
+            user_id: User ID
+            cluster_ids: List of cluster IDs to assign (empty list = no cluster access)
+
+        Returns:
+            Updated User instance or None if user not found
+        """
+        async with self.db.session() as session:
+            # Verify user exists
+            result = await session.execute(
+                select(User).where(User.id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            if not user:
+                return None
+
+            # Remove existing cluster assignments
+            await session.execute(
+                delete(UserCluster).where(UserCluster.user_id == user_id)
+            )
+
+            # Add new cluster assignments
+            for cluster_id in cluster_ids:
+                user_cluster = UserCluster(user_id=user_id, cluster_id=cluster_id)
+                session.add(user_cluster)
+
+            await session.commit()
+
+            logger.info(f"Assigned {len(cluster_ids)} clusters to user {user_id}")
+
+            # Reload user with clusters
+            return await self.get_user(user_id)
+
+    async def get_user_clusters(self, user_id: int) -> List[Cluster]:
+        """Get all clusters assigned to a user.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            List of Cluster instances
+        """
+        async with self.db.session() as session:
+            result = await session.execute(
+                select(Cluster)
+                .join(UserCluster, UserCluster.cluster_id == Cluster.id)
+                .where(UserCluster.user_id == user_id)
+                .order_by(Cluster.name)
+            )
+            return list(result.scalars().all())
+
+    async def add_cluster_to_user(self, user_id: int, cluster_id: int) -> bool:
+        """Add a single cluster to a user (without removing existing).
+
+        Args:
+            user_id: User ID
+            cluster_id: Cluster ID to add
+
+        Returns:
+            True if added, False if already assigned or user/cluster not found
+        """
+        async with self.db.session() as session:
+            # Check if already assigned
+            result = await session.execute(
+                select(UserCluster).where(
+                    UserCluster.user_id == user_id,
+                    UserCluster.cluster_id == cluster_id
+                )
+            )
+            if result.scalar_one_or_none():
+                return False  # Already assigned
+
+            # Add assignment
+            user_cluster = UserCluster(user_id=user_id, cluster_id=cluster_id)
+            session.add(user_cluster)
+            await session.commit()
+
+            logger.info(f"Added cluster {cluster_id} to user {user_id}")
+            return True
+
+    async def remove_cluster_from_user(self, user_id: int, cluster_id: int) -> bool:
+        """Remove a single cluster from a user.
+
+        Args:
+            user_id: User ID
+            cluster_id: Cluster ID to remove
+
+        Returns:
+            True if removed, False if not assigned
+        """
+        async with self.db.session() as session:
+            result = await session.execute(
+                delete(UserCluster).where(
+                    UserCluster.user_id == user_id,
+                    UserCluster.cluster_id == cluster_id
+                )
+            )
+            await session.commit()
+
+            if result.rowcount > 0:
+                logger.info(f"Removed cluster {cluster_id} from user {user_id}")
+                return True
+            return False
