@@ -233,7 +233,7 @@ export default function CategoryGuidancePage() {
                   <select
                     value={formData.api_name}
                     onChange={(e) => setFormData({ ...formData, api_name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
                     disabled={!!editingCategory}
                   >
                     {apiOptions.map((api) => (
@@ -247,7 +247,7 @@ export default function CategoryGuidancePage() {
                     type="text"
                     value={formData.category_name}
                     onChange={(e) => setFormData({ ...formData, category_name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400"
                     disabled={!!editingCategory}
                     placeholder="e.g., Interfaces, VLANs"
                   />
@@ -260,7 +260,7 @@ export default function CategoryGuidancePage() {
                   type="text"
                   value={formData.display_name}
                   onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400"
                   placeholder="Friendly display name"
                 />
               </div>
@@ -270,7 +270,7 @@ export default function CategoryGuidancePage() {
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400"
                   rows={3}
                   placeholder="What operations are in this category?"
                 />
@@ -281,7 +281,7 @@ export default function CategoryGuidancePage() {
                 <textarea
                   value={formData.when_to_use}
                   onChange={(e) => setFormData({ ...formData, when_to_use: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400"
                   rows={3}
                   placeholder="When should this category be selected?"
                 />
@@ -294,7 +294,7 @@ export default function CategoryGuidancePage() {
                     type="number"
                     value={formData.priority}
                     onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
                   />
                 </div>
                 <div className="flex items-center pt-6">

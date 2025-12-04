@@ -249,7 +249,7 @@ export default function ToolOverridesPage() {
                   type="text"
                   value={formData.operation_name}
                   onChange={(e) => setFormData({ ...formData, operation_name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400"
                   disabled={!!editingOverride}
                   placeholder="e.g., manage_createVlan"
                 />
@@ -260,7 +260,7 @@ export default function ToolOverridesPage() {
                 <textarea
                   value={formData.enhanced_description}
                   onChange={(e) => setFormData({ ...formData, enhanced_description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400"
                   rows={4}
                   placeholder="Detailed description of what this operation does and when to use it..."
                 />
@@ -271,7 +271,7 @@ export default function ToolOverridesPage() {
                 <textarea
                   value={formData.usage_hint}
                   onChange={(e) => setFormData({ ...formData, usage_hint: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400"
                   rows={2}
                   placeholder="Quick tip for using this operation..."
                 />
@@ -284,7 +284,7 @@ export default function ToolOverridesPage() {
                     type="text"
                     value={newRelatedTool}
                     onChange={(e) => setNewRelatedTool(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400"
                     placeholder="Operation name"
                     onKeyPress={(e) => e.key === 'Enter' && addRelatedTool()}
                   />

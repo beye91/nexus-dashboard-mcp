@@ -230,7 +230,7 @@ export default function SystemPromptPage() {
                     type="text"
                     value={formData.section_name}
                     onChange={(e) => setFormData({ ...formData, section_name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400"
                     disabled={!!editingSection}
                     placeholder="e.g., api_overview"
                   />
@@ -241,7 +241,7 @@ export default function SystemPromptPage() {
                     type="number"
                     value={formData.section_order}
                     onChange={(e) => setFormData({ ...formData, section_order: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400"
                   />
                 </div>
               </div>
@@ -252,7 +252,7 @@ export default function SystemPromptPage() {
                   type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400"
                   placeholder="Section title (displayed in prompt)"
                 />
               </div>
@@ -262,7 +262,7 @@ export default function SystemPromptPage() {
                 <textarea
                   value={formData.content}
                   onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm bg-white text-gray-900 placeholder-gray-400"
                   rows={10}
                   placeholder="The actual content of this section..."
                 />
