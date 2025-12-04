@@ -28,19 +28,33 @@ export default function SecurityPage() {
   const [config, setConfig] = useState<SecurityConfig | null>(null);
   const [editMode, setEditMode] = useState(false);
 
+  // LDAP state
+  const [ldapConfigs, setLdapConfigs] = useState<LDAPConfig[]>([]);
+  const [editingLdapConfig, setEditingLdapConfig] = useState<LDAPConfig | null>(null);
+  const [showLdapModal, setShowLdapModal] = useState(false);
+  const [ldapGroups, setLdapGroups] = useState<LDAPGroup[]>([]);
+  const [ldapRoleMappings, setLdapRoleMappings] = useState<LDAPRoleMapping[]>([]);
+  const [ldapClusterMappings, setLdapClusterMappings] = useState<LDAPClusterMapping[]>([]);
+  const [selectedLdapConfig, setSelectedLdapConfig] = useState<LDAPConfig | null>(null);
+  const [showMappingsModal, setShowMappingsModal] = useState(false);
+
+  // Cluster state
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+
   // API Token state
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
   const [tokenUsername, setTokenUsername] = useState<string>('');
 
   // Form states
-  const [userForm, setUserForm] = useState<CreateUserRequest & { role_ids: number[] }>({
+  const [userForm, setUserForm] = useState<CreateUserRequest & { role_ids: number[]; cluster_ids: number[] }>({
     username: '',
     password: '',
     email: '',
     display_name: '',
     is_superuser: false,
     role_ids: [],
+    cluster_ids: [],
   });
 
   const [roleForm, setRoleForm] = useState<CreateRoleRequest>({
@@ -50,28 +64,65 @@ export default function SecurityPage() {
     operations: [],
   });
 
+  const [ldapForm, setLdapForm] = useState<LDAPConfigCreate>({
+    name: '',
+    server_url: '',
+    base_dn: '',
+    bind_dn: '',
+    bind_password: '',
+    use_ssl: true,
+    use_starttls: false,
+    verify_ssl: true,
+    user_search_filter: '(objectClass=person)',
+    username_attribute: 'uid',
+    email_attribute: 'mail',
+    display_name_attribute: 'cn',
+    member_of_attribute: 'memberOf',
+    group_search_filter: '(objectClass=groupOfNames)',
+    group_name_attribute: 'cn',
+    group_member_attribute: 'member',
+    sync_interval_minutes: 60,
+    auto_create_users: true,
+    auto_sync_groups: true,
+  });
+
   // Fetch data based on active tab
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
         if (activeTab === 'users') {
-          const [usersRes, rolesRes] = await Promise.all([
+          const [usersRes, rolesRes, clustersRes] = await Promise.all([
             api.users.list(),
             api.roles.list(),
+            api.clusters.list(),
           ]);
           setUsers(usersRes.data);
           setRoles(rolesRes.data);
+          setClusters(clustersRes.data);
         } else if (activeTab === 'roles') {
           const rolesRes = await api.roles.list();
           setRoles(rolesRes.data);
         } else if (activeTab === 'settings') {
-          const [configRes, editModeRes] = await Promise.all([
+          const [configRes, editModeRes, usersRes, rolesRes] = await Promise.all([
             api.security.getConfig(),
             api.security.getEditMode(),
+            api.users.list(),
+            api.roles.list(),
           ]);
           setConfig(configRes.data);
           setEditMode(editModeRes.data.enabled);
+          setUsers(usersRes.data);
+          setRoles(rolesRes.data);
+        } else if (activeTab === 'ldap') {
+          const [ldapRes, rolesRes, clustersRes] = await Promise.all([
+            api.ldap.listConfigs(),
+            api.roles.list(),
+            api.clusters.list(),
+          ]);
+          setLdapConfigs(ldapRes.data);
+          setRoles(rolesRes.data);
+          setClusters(clustersRes.data);
         }
         setError(null);
       } catch (err: any) {
@@ -116,6 +167,9 @@ export default function SecurityPage() {
       });
       if (userForm.role_ids.length > 0 || editingUser.roles.length > 0) {
         await api.users.assignRoles(editingUser.id, { role_ids: userForm.role_ids });
+      }
+      if (userForm.cluster_ids.length > 0 || editingUser.clusters.length > 0) {
+        await api.users.assignClusters(editingUser.id, { cluster_ids: userForm.cluster_ids });
       }
       showSuccess('User updated successfully');
       setShowUserModal(false);
@@ -190,6 +244,7 @@ export default function SecurityPage() {
       display_name: '',
       is_superuser: false,
       role_ids: [],
+      cluster_ids: [],
     });
   };
 
@@ -203,6 +258,7 @@ export default function SecurityPage() {
         display_name: user.display_name || '',
         is_superuser: user.is_superuser,
         role_ids: user.roles.map(r => r.id),
+        cluster_ids: user.clusters?.map(c => c.id) || [],
       });
     } else {
       setEditingUser(null);
@@ -284,6 +340,198 @@ export default function SecurityPage() {
     setShowRoleModal(true);
   };
 
+  // LDAP CRUD operations
+  const handleCreateLdapConfig = async () => {
+    try {
+      await api.ldap.createConfig(ldapForm);
+      showSuccess('LDAP configuration created successfully');
+      setShowLdapModal(false);
+      resetLdapForm();
+      const res = await api.ldap.listConfigs();
+      setLdapConfigs(res.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to create LDAP configuration');
+    }
+  };
+
+  const handleUpdateLdapConfig = async () => {
+    if (!editingLdapConfig) return;
+    try {
+      await api.ldap.updateConfig(editingLdapConfig.id, ldapForm);
+      showSuccess('LDAP configuration updated successfully');
+      setShowLdapModal(false);
+      setEditingLdapConfig(null);
+      resetLdapForm();
+      const res = await api.ldap.listConfigs();
+      setLdapConfigs(res.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to update LDAP configuration');
+    }
+  };
+
+  const handleDeleteLdapConfig = async (configId: number) => {
+    if (!confirm('Are you sure you want to delete this LDAP configuration?')) return;
+    try {
+      await api.ldap.deleteConfig(configId);
+      showSuccess('LDAP configuration deleted successfully');
+      const res = await api.ldap.listConfigs();
+      setLdapConfigs(res.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to delete LDAP configuration');
+    }
+  };
+
+  const handleTestLdapConnection = async (configId: number) => {
+    try {
+      const res = await api.ldap.testConnection(configId);
+      if (res.data.success) {
+        showSuccess(`Connection successful! ${res.data.message || ''}`);
+      } else {
+        setError(`Connection failed: ${res.data.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to test connection');
+    }
+  };
+
+  const handleSyncLdapUsers = async (configId: number) => {
+    if (!confirm('Start LDAP user synchronization? This may take a while.')) return;
+    try {
+      const res = await api.ldap.syncUsers(configId);
+      if (res.data.success) {
+        showSuccess(`Sync successful! Created: ${res.data.created || 0}, Updated: ${res.data.updated || 0}`);
+        const ldapRes = await api.ldap.listConfigs();
+        setLdapConfigs(ldapRes.data);
+      } else {
+        setError(`Sync failed: ${res.data.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to sync users');
+    }
+  };
+
+  const handleDiscoverGroups = async (config: LDAPConfig) => {
+    try {
+      const res = await api.ldap.discoverGroups(config.id);
+      setLdapGroups(res.data);
+      setSelectedLdapConfig(config);
+      const [roleMappings, clusterMappings] = await Promise.all([
+        api.ldap.listRoleMappings(config.id),
+        api.ldap.listClusterMappings(config.id),
+      ]);
+      setLdapRoleMappings(roleMappings.data);
+      setLdapClusterMappings(clusterMappings.data);
+      setShowMappingsModal(true);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to discover groups');
+    }
+  };
+
+  const handleAddRoleMapping = async (groupDn: string, groupName: string, roleId: number) => {
+    if (!selectedLdapConfig) return;
+    try {
+      await api.ldap.createRoleMapping(selectedLdapConfig.id, { ldap_group_dn: groupDn, ldap_group_name: groupName, role_id: roleId });
+      showSuccess('Role mapping added successfully');
+      const res = await api.ldap.listRoleMappings(selectedLdapConfig.id);
+      setLdapRoleMappings(res.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to add role mapping');
+    }
+  };
+
+  const handleDeleteRoleMapping = async (mappingId: number) => {
+    if (!selectedLdapConfig) return;
+    try {
+      await api.ldap.deleteRoleMapping(selectedLdapConfig.id, mappingId);
+      showSuccess('Role mapping deleted successfully');
+      const res = await api.ldap.listRoleMappings(selectedLdapConfig.id);
+      setLdapRoleMappings(res.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to delete role mapping');
+    }
+  };
+
+  const handleAddClusterMapping = async (groupDn: string, groupName: string, clusterId: number) => {
+    if (!selectedLdapConfig) return;
+    try {
+      await api.ldap.createClusterMapping(selectedLdapConfig.id, { ldap_group_dn: groupDn, ldap_group_name: groupName, cluster_id: clusterId });
+      showSuccess('Cluster mapping added successfully');
+      const res = await api.ldap.listClusterMappings(selectedLdapConfig.id);
+      setLdapClusterMappings(res.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to add cluster mapping');
+    }
+  };
+
+  const handleDeleteClusterMapping = async (mappingId: number) => {
+    if (!selectedLdapConfig) return;
+    try {
+      await api.ldap.deleteClusterMapping(selectedLdapConfig.id, mappingId);
+      showSuccess('Cluster mapping deleted successfully');
+      const res = await api.ldap.listClusterMappings(selectedLdapConfig.id);
+      setLdapClusterMappings(res.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to delete cluster mapping');
+    }
+  };
+
+  const resetLdapForm = () => {
+    setLdapForm({
+      name: '',
+      server_url: '',
+      base_dn: '',
+      bind_dn: '',
+      bind_password: '',
+      use_ssl: true,
+      use_starttls: false,
+      verify_ssl: true,
+      user_search_filter: '(objectClass=person)',
+      username_attribute: 'uid',
+      email_attribute: 'mail',
+      display_name_attribute: 'cn',
+      member_of_attribute: 'memberOf',
+      group_search_filter: '(objectClass=groupOfNames)',
+      group_name_attribute: 'cn',
+      group_member_attribute: 'member',
+      sync_interval_minutes: 60,
+      auto_create_users: true,
+      auto_sync_groups: true,
+    });
+  };
+
+  const openLdapModal = (config?: LDAPConfig) => {
+    if (config) {
+      setEditingLdapConfig(config);
+      setLdapForm({
+        name: config.name,
+        server_url: config.server_url,
+        base_dn: config.base_dn,
+        bind_dn: config.bind_dn,
+        use_ssl: config.use_ssl,
+        use_starttls: config.use_starttls,
+        verify_ssl: config.verify_ssl,
+        user_search_base: config.user_search_base,
+        user_search_filter: config.user_search_filter,
+        username_attribute: config.username_attribute,
+        email_attribute: config.email_attribute,
+        display_name_attribute: config.display_name_attribute,
+        member_of_attribute: config.member_of_attribute,
+        group_search_base: config.group_search_base,
+        group_search_filter: config.group_search_filter,
+        group_name_attribute: config.group_name_attribute,
+        group_member_attribute: config.group_member_attribute,
+        sync_interval_minutes: config.sync_interval_minutes,
+        auto_create_users: config.auto_create_users,
+        auto_sync_groups: config.auto_sync_groups,
+        default_role_id: config.default_role_id,
+      });
+    } else {
+      setEditingLdapConfig(null);
+      resetLdapForm();
+    }
+    setShowLdapModal(true);
+  };
+
   // Toggle edit mode
   const handleToggleEditMode = async () => {
     try {
@@ -328,6 +576,7 @@ export default function SecurityPage() {
               { id: 'users' as TabType, label: 'Users', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
               { id: 'roles' as TabType, label: 'Roles', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
               { id: 'settings' as TabType, label: 'Settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
+              { id: 'ldap' as TabType, label: 'LDAP', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -585,6 +834,101 @@ export default function SecurityPage() {
                 </div>
               </div>
             )}
+
+            {/* LDAP Tab */}
+            {activeTab === 'ldap' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-semibold text-gray-900">LDAP Configuration</h3>
+                  <button
+                    onClick={() => openLdapModal()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Add LDAP Config
+                  </button>
+                </div>
+
+                <div className="grid gap-4">
+                  {ldapConfigs.map((config) => (
+                    <div key={config.id} className="bg-white rounded-lg p-6 border border-gray-200 shadow">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <h4 className="text-lg font-medium text-gray-900">{config.name}</h4>
+                            {config.is_enabled && (
+                              <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded">Enabled</span>
+                            )}
+                            {config.is_primary && (
+                              <span className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded">Primary</span>
+                            )}
+                            {config.last_sync_status && (
+                              <span className={`px-2 py-1 text-xs rounded ${
+                                config.last_sync_status === 'success' ? 'bg-green-100 text-green-700' :
+                                config.last_sync_status === 'partial' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                Last Sync: {config.last_sync_status}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-600 space-y-1">
+                            <p><span className="font-medium">Server:</span> {config.server_url}</p>
+                            <p><span className="font-medium">Base DN:</span> {config.base_dn}</p>
+                            <p><span className="font-medium">User Filter:</span> {config.user_search_filter}</p>
+                            {config.last_sync_at && (
+                              <p className="text-xs text-gray-500">
+                                Last synced: {new Date(config.last_sync_at).toLocaleString()}
+                                ({config.last_sync_users_created} created, {config.last_sync_users_updated} updated)
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-col space-y-2 ml-4">
+                          <button
+                            onClick={() => handleTestLdapConnection(config.id)}
+                            className="px-3 py-1 text-sm bg-purple-100 text-purple-700 rounded hover:bg-purple-200 whitespace-nowrap"
+                          >
+                            Test Connection
+                          </button>
+                          <button
+                            onClick={() => handleSyncLdapUsers(config.id)}
+                            className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 whitespace-nowrap"
+                          >
+                            Sync Users
+                          </button>
+                          <button
+                            onClick={() => handleDiscoverGroups(config)}
+                            className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200 whitespace-nowrap"
+                          >
+                            Manage Mappings
+                          </button>
+                          <button
+                            onClick={() => openLdapModal(config)}
+                            className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteLdapConfig(config.id)}
+                            className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {ldapConfigs.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      No LDAP configurations found. Click "Add LDAP Config" to create one.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -655,6 +999,31 @@ export default function SecurityPage() {
                         <span className="text-sm text-gray-700">{role.name}</span>
                       </label>
                     ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Clusters</label>
+                  <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-200 rounded-md p-2">
+                    {clusters.map((cluster) => (
+                      <label key={cluster.id} className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={userForm.cluster_ids.includes(cluster.id!)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setUserForm({ ...userForm, cluster_ids: [...userForm.cluster_ids, cluster.id!] });
+                            } else {
+                              setUserForm({ ...userForm, cluster_ids: userForm.cluster_ids.filter(id => id !== cluster.id) });
+                            }
+                          }}
+                          className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">{cluster.name}</span>
+                      </label>
+                    ))}
+                    {clusters.length === 0 && (
+                      <p className="text-xs text-gray-500">No clusters available</p>
+                    )}
                   </div>
                 </div>
                 <div>
@@ -825,6 +1194,360 @@ export default function SecurityPage() {
               <div className="flex justify-end">
                 <button
                   onClick={() => { setShowTokenModal(false); setGeneratedToken(null); setTokenUsername(''); }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* LDAP Config Modal */}
+        {showLdapModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
+            <div className="bg-white rounded-lg p-6 w-full max-w-3xl border border-gray-200 shadow-xl my-8 max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                {editingLdapConfig ? 'Edit LDAP Configuration' : 'Create LDAP Configuration'}
+              </h3>
+              <div className="space-y-4">
+                {/* Basic Settings */}
+                <div className="border-b pb-4">
+                  <h4 className="text-md font-medium text-gray-800 mb-3">Basic Settings</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Configuration Name</label>
+                      <input
+                        type="text"
+                        value={ldapForm.name}
+                        onChange={(e) => setLdapForm({ ...ldapForm, name: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Default Role</label>
+                      <select
+                        value={ldapForm.default_role_id || ''}
+                        onChange={(e) => setLdapForm({ ...ldapForm, default_role_id: e.target.value ? parseInt(e.target.value) : undefined })}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900"
+                      >
+                        <option value="">No default role</option>
+                        {roles.map((role) => (
+                          <option key={role.id} value={role.id}>{role.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Connection Settings */}
+                <div className="border-b pb-4">
+                  <h4 className="text-md font-medium text-gray-800 mb-3">Connection Settings</h4>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Server URL</label>
+                      <input
+                        type="text"
+                        placeholder="ldaps://ldap.example.com:636"
+                        value={ldapForm.server_url}
+                        onChange={(e) => setLdapForm({ ...ldapForm, server_url: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Base DN</label>
+                        <input
+                          type="text"
+                          placeholder="dc=example,dc=com"
+                          value={ldapForm.base_dn}
+                          onChange={(e) => setLdapForm({ ...ldapForm, base_dn: e.target.value })}
+                          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Bind DN</label>
+                        <input
+                          type="text"
+                          placeholder="cn=admin,dc=example,dc=com"
+                          value={ldapForm.bind_dn || ''}
+                          onChange={(e) => setLdapForm({ ...ldapForm, bind_dn: e.target.value })}
+                          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Bind Password</label>
+                      <input
+                        type="password"
+                        value={ldapForm.bind_password || ''}
+                        onChange={(e) => setLdapForm({ ...ldapForm, bind_password: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div className="flex space-x-4">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={ldapForm.use_ssl || false}
+                          onChange={(e) => setLdapForm({ ...ldapForm, use_ssl: e.target.checked })}
+                          className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600"
+                        />
+                        <span className="text-sm text-gray-700">Use SSL/TLS</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={ldapForm.use_starttls || false}
+                          onChange={(e) => setLdapForm({ ...ldapForm, use_starttls: e.target.checked })}
+                          className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600"
+                        />
+                        <span className="text-sm text-gray-700">Use STARTTLS</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={ldapForm.verify_ssl || false}
+                          onChange={(e) => setLdapForm({ ...ldapForm, verify_ssl: e.target.checked })}
+                          className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600"
+                        />
+                        <span className="text-sm text-gray-700">Verify SSL</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* User Attributes */}
+                <div className="border-b pb-4">
+                  <h4 className="text-md font-medium text-gray-800 mb-3">User Attributes</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">User Search Filter</label>
+                      <input
+                        type="text"
+                        value={ldapForm.user_search_filter || ''}
+                        onChange={(e) => setLdapForm({ ...ldapForm, user_search_filter: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Username Attribute</label>
+                      <input
+                        type="text"
+                        value={ldapForm.username_attribute || ''}
+                        onChange={(e) => setLdapForm({ ...ldapForm, username_attribute: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email Attribute</label>
+                      <input
+                        type="text"
+                        value={ldapForm.email_attribute || ''}
+                        onChange={(e) => setLdapForm({ ...ldapForm, email_attribute: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Display Name Attribute</label>
+                      <input
+                        type="text"
+                        value={ldapForm.display_name_attribute || ''}
+                        onChange={(e) => setLdapForm({ ...ldapForm, display_name_attribute: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Group Settings */}
+                <div className="border-b pb-4">
+                  <h4 className="text-md font-medium text-gray-800 mb-3">Group Settings</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Group Search Filter</label>
+                      <input
+                        type="text"
+                        value={ldapForm.group_search_filter || ''}
+                        onChange={(e) => setLdapForm({ ...ldapForm, group_search_filter: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Group Name Attribute</label>
+                      <input
+                        type="text"
+                        value={ldapForm.group_name_attribute || ''}
+                        onChange={(e) => setLdapForm({ ...ldapForm, group_name_attribute: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sync Settings */}
+                <div>
+                  <h4 className="text-md font-medium text-gray-800 mb-3">Sync Settings</h4>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Sync Interval (minutes)</label>
+                      <input
+                        type="number"
+                        value={ldapForm.sync_interval_minutes || 60}
+                        onChange={(e) => setLdapForm({ ...ldapForm, sync_interval_minutes: parseInt(e.target.value) })}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div className="flex space-x-4">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={ldapForm.auto_create_users || false}
+                          onChange={(e) => setLdapForm({ ...ldapForm, auto_create_users: e.target.checked })}
+                          className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600"
+                        />
+                        <span className="text-sm text-gray-700">Auto-create users</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={ldapForm.auto_sync_groups || false}
+                          onChange={(e) => setLdapForm({ ...ldapForm, auto_sync_groups: e.target.checked })}
+                          className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600"
+                        />
+                        <span className="text-sm text-gray-700">Auto-sync groups</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={() => { setShowLdapModal(false); setEditingLdapConfig(null); resetLdapForm(); }}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 border border-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={editingLdapConfig ? handleUpdateLdapConfig : handleCreateLdapConfig}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  {editingLdapConfig ? 'Save Changes' : 'Create Configuration'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* LDAP Group Mappings Modal */}
+        {showMappingsModal && selectedLdapConfig && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
+            <div className="bg-white rounded-lg p-6 w-full max-w-4xl border border-gray-200 shadow-xl my-8 max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                LDAP Group Mappings - {selectedLdapConfig.name}
+              </h3>
+
+              <div className="space-y-6">
+                {/* Role Mappings */}
+                <div>
+                  <h4 className="text-md font-medium text-gray-800 mb-3">Role Mappings</h4>
+                  <div className="space-y-2">
+                    {ldapRoleMappings.map((mapping) => (
+                      <div key={mapping.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">{mapping.ldap_group_name}</p>
+                          <p className="text-xs text-gray-500">{mapping.ldap_group_dn}</p>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <span className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded">
+                            {mapping.role_name || `Role ${mapping.role_id}`}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteRoleMapping(mapping.id)}
+                            className="text-red-600 hover:text-red-800 text-sm"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
+                    <p className="text-sm font-medium text-blue-900 mb-2">Add Role Mapping</p>
+                    <div className="flex space-x-2">
+                      <select className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-md text-sm">
+                        <option value="">Select LDAP Group...</option>
+                        {ldapGroups.map((group) => (
+                          <option key={group.dn} value={group.dn}>{group.name}</option>
+                        ))}
+                      </select>
+                      <select className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-md text-sm">
+                        <option value="">Select Role...</option>
+                        {roles.map((role) => (
+                          <option key={role.id} value={role.id}>{role.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cluster Mappings */}
+                <div>
+                  <h4 className="text-md font-medium text-gray-800 mb-3">Cluster Mappings</h4>
+                  <div className="space-y-2">
+                    {ldapClusterMappings.map((mapping) => (
+                      <div key={mapping.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">{mapping.ldap_group_name}</p>
+                          <p className="text-xs text-gray-500">{mapping.ldap_group_dn}</p>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded">
+                            {mapping.cluster_name || `Cluster ${mapping.cluster_id}`}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteClusterMapping(mapping.id)}
+                            className="text-red-600 hover:text-red-800 text-sm"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded">
+                    <p className="text-sm font-medium text-green-900 mb-2">Add Cluster Mapping</p>
+                    <div className="flex space-x-2">
+                      <select className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-md text-sm">
+                        <option value="">Select LDAP Group...</option>
+                        {ldapGroups.map((group) => (
+                          <option key={group.dn} value={group.dn}>{group.name}</option>
+                        ))}
+                      </select>
+                      <select className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-md text-sm">
+                        <option value="">Select Cluster...</option>
+                        {clusters.map((cluster) => (
+                          <option key={cluster.id} value={cluster.id}>{cluster.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end mt-6">
+                <button
+                  onClick={() => { setShowMappingsModal(false); setSelectedLdapConfig(null); setLdapGroups([]); }}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
                   Done

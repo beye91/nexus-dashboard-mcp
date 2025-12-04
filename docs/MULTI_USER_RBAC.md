@@ -53,23 +53,37 @@ This document describes the multi-user authentication and authorization system f
 │ email            │       │ created_at       │       │ edit_mode_enabled│
 │ display_name     │       └──────────────────┘       │ is_system_role   │
 │ api_token        │                                  │ created_at       │
-│ is_active        │                                  │ updated_at       │
-│ is_superuser     │                                  └────────┬─────────┘
-│ auth_type        │                                           │
-│ last_login       │       ┌──────────────────┐                │
-│ created_at       │       │  role_operations │                │
-│ updated_at       │       ├──────────────────┤                │
-└──────────────────┘       │ id (PK)          │                │
+│ is_active        │       ┌──────────────────┐       │ updated_at       │
+│ is_superuser     │◄──┐   │  user_clusters   │       └────────┬─────────┘
+│ auth_type        │   │   ├──────────────────┤                │
+│ last_login       │   │   │ id (PK)          │                │
+│ created_at       │   │   │ user_id (FK)     │                │
+│ updated_at       │   │   │ cluster_id (FK)  │───┐            │
+└──────────────────┘   │   │ created_at       │   │            │
+                       └───└──────────────────┘   │            │
+┌──────────────────┐                              │            │
+│  user_sessions   │       ┌──────────────────┐   │            │
+├──────────────────┤       │     clusters     │◄──┘            │
+│ id (PK)          │       ├──────────────────┤                │
+│ user_id (FK)     │───┐   │ id (PK)          │                │
+│ session_token    │   │   │ name             │                │
+│ expires_at       │   │   │ url              │                │
+│ created_at       │   │   │ username         │                │
+└──────────────────┘   │   │ password_enc     │                │
+                       │   │ verify_ssl       │                │
+                       │   │ is_active        │                │
+                       │   │ created_at       │                │
+                       │   │ updated_at       │                │
+                       │   └──────────────────┘                │
+                       │                                        │
+                       │   ┌──────────────────┐                │
+                       │   │  role_operations │                │
+                       │   ├──────────────────┤                │
+                       └──►│ id (PK)          │                │
                            │ role_id (FK)     │────────────────┘
-┌──────────────────┐       │ operation_name   │
-│  user_sessions   │       │ created_at       │
-├──────────────────┤       └──────────────────┘
-│ id (PK)          │
-│ user_id (FK)     │───────► users.id
-│ session_token    │
-│ expires_at       │
-│ created_at       │
-└──────────────────┘
+                           │ operation_name   │
+                           │ created_at       │
+                           └──────────────────┘
 ```
 
 ## Default System Roles
@@ -217,6 +231,124 @@ When a user connects via Claude Desktop:
 3. Create first admin user (automatically assigned Administrator role)
 4. Login with created credentials
 5. Create additional users and assign roles as needed
+
+## Cluster Access Control
+
+The system enforces cluster-level access control in addition to operation-level permissions. Users can only interact with Nexus Dashboard clusters they are explicitly assigned to.
+
+### Cluster Assignment Model
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 Cluster Access Control Flow                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  User attempts to execute MCP tool                              │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ tools/call { name: "manage_getVlans",                    │   │
+│  │              arguments: { cluster: "prod-nexus" } }      │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              Step 1: Operation Permission Check          │   │
+│  │  Does user have "manage_getVlans" in their roles?        │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              Step 2: Cluster Access Check                │   │
+│  │  1. Extract cluster name from tool arguments             │   │
+│  │  2. Lookup cluster by name in clusters table             │   │
+│  │  3. Check user_clusters table for user-cluster link      │   │
+│  │  4. Allow if user.is_superuser OR cluster in user's list │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              Step 3: Execute Tool                        │   │
+│  │  Forward request to Nexus Dashboard cluster              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Access Rules
+
+1. **Superusers**: Always have access to ALL clusters regardless of assignments
+2. **Regular Users with Cluster Assignments**: Can only access assigned clusters
+3. **Regular Users without Cluster Assignments**: Denied access to all clusters
+4. **Legacy Token Holders**: Have access to ALL clusters (backward compatibility)
+
+### Cluster Parameter Detection
+
+The MCP transport layer automatically detects cluster references in tool arguments by checking for these parameter names:
+- `cluster`
+- `cluster_name`
+- `clusterName`
+
+If no cluster parameter is found in the tool arguments, the operation is allowed (for non-cluster-specific operations).
+
+### Error Handling
+
+When cluster access is denied, users receive:
+
+```json
+{
+  "error": {
+    "code": -32600,
+    "message": "Cluster access denied for user 'john.doe': Access denied to cluster 'prod-nexus'"
+  }
+}
+```
+
+All cluster access denial events are logged with:
+- Username
+- Cluster name and ID
+- Tool name being executed
+- Timestamp
+
+### API Endpoints for Cluster Management
+
+| Method | Endpoint                         | Description                           |
+|--------|----------------------------------|---------------------------------------|
+| GET    | /api/clusters                    | List all clusters                     |
+| POST   | /api/clusters                    | Create new cluster                    |
+| GET    | /api/clusters/{id}               | Get cluster details                   |
+| PUT    | /api/clusters/{id}               | Update cluster                        |
+| DELETE | /api/clusters/{id}               | Delete cluster                        |
+| POST   | /api/users/{id}/clusters         | Assign clusters to user               |
+| DELETE | /api/users/{id}/clusters/{cluster_id} | Remove cluster assignment      |
+
+### Example: Assigning Clusters to User
+
+```bash
+# Assign user to multiple clusters
+curl -X POST http://localhost:7001/api/users/5/clusters \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session_token=<token>" \
+  -d '{
+    "cluster_ids": [1, 2, 3]
+  }'
+
+Response:
+{
+  "message": "User assigned to 3 cluster(s)",
+  "user": {
+    "id": 5,
+    "username": "network_operator",
+    "clusters": [
+      {"id": 1, "name": "prod-nexus"},
+      {"id": 2, "name": "dev-nexus"},
+      {"id": 3, "name": "test-nexus"}
+    ]
+  }
+}
+```
+
+### Implementation Location
+
+Cluster access enforcement is implemented in `/src/api/mcp_transport.py` in the `validate_cluster_access()` function, which is called before every MCP tool execution in both the SSE and message endpoints.
 
 ## Security Considerations
 
