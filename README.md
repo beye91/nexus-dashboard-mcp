@@ -259,14 +259,7 @@ Users can be managed through the Web UI under **Security > Users**.
 
 ## Documentation
 
-- **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
-- **[Architecture Overview](docs/ARCHITECTURE.md)** - System design and components
-- **[User Guide](docs/USER_GUIDE.md)** - Comprehensive usage documentation
-- **[Web UI Guide](docs/WEB_UI_GUIDE.md)** - Managing the system via web interface
-- **[Claude Desktop Setup](docs/CLAUDE_DESKTOP_SETUP.md)** - Detailed Claude integration
-- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment recommendations
-- **[Multi-User RBAC](docs/MULTI_USER_RBAC.md)** - Role-based access control
-- **[API Guidance System](docs/API_GUIDANCE_SYSTEM.md)** - Customizing API behavior
+See **[QUICKSTART.md](QUICKSTART.md)** to get up and running in 5 minutes.
 
 ## Troubleshooting
 
