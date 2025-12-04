@@ -379,9 +379,9 @@ class RoleService:
                     grouped[ep.api_name] = []
                 grouped[ep.api_name].append({
                     "name": ep.operation_id,
-                    "method": ep.method,
+                    "method": ep.http_method,
                     "path": ep.path,
-                    "description": ep.description or f"{ep.method} {ep.path}",
+                    "description": ep.description or f"{ep.http_method} {ep.path}",
                 })
 
             return grouped
