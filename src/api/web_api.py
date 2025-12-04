@@ -23,6 +23,7 @@ from src.services.credential_manager import CredentialManager
 from src.services.user_service import UserService
 from src.services.role_service import RoleService
 from src.services.ldap_service import LDAPService
+from src.services.guidance_service import GuidanceService
 from src.utils.encryption import decrypt_password
 from src.api.mcp_transport import router as mcp_router
 
@@ -418,11 +419,83 @@ class LDAPClusterMappingResponse(BaseModel):
     created_at: str
 
 
+# ==================== Guidance System Pydantic Models ====================
+
+class APIGuidanceCreate(BaseModel):
+    """Request model for creating/updating API guidance."""
+    display_name: str
+    description: Optional[str] = None
+    when_to_use: Optional[str] = None
+    when_not_to_use: Optional[str] = None
+    examples: Optional[List[dict]] = None
+    priority: int = 0
+    is_active: bool = True
+
+
+class CategoryGuidanceCreate(BaseModel):
+    """Request model for creating/updating category guidance."""
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    when_to_use: Optional[str] = None
+    related_categories: Optional[List[str]] = None
+    priority: int = 0
+    is_active: bool = True
+
+
+class WorkflowCreate(BaseModel):
+    """Request model for creating a workflow."""
+    name: str
+    display_name: str
+    description: Optional[str] = None
+    problem_statement: Optional[str] = None
+    use_case_tags: Optional[List[str]] = None
+    is_active: bool = True
+    priority: int = 0
+
+
+class WorkflowUpdate(BaseModel):
+    """Request model for updating a workflow."""
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    problem_statement: Optional[str] = None
+    use_case_tags: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+    priority: Optional[int] = None
+
+
+class WorkflowStepCreate(BaseModel):
+    """Request model for creating a workflow step."""
+    step_order: int
+    operation_name: str
+    description: Optional[str] = None
+    expected_output: Optional[str] = None
+    optional: bool = False
+    fallback_operation: Optional[str] = None
+
+
+class ToolOverrideCreate(BaseModel):
+    """Request model for creating/updating tool description override."""
+    enhanced_description: Optional[str] = None
+    usage_hint: Optional[str] = None
+    related_tools: Optional[List[str]] = None
+    common_parameters: Optional[List[dict]] = None
+    is_active: bool = True
+
+
+class SystemPromptSectionCreate(BaseModel):
+    """Request model for creating/updating system prompt section."""
+    section_order: int = 0
+    title: Optional[str] = None
+    content: str
+    is_active: bool = True
+
+
 # Initialize services
 credential_manager = CredentialManager()
 user_service = UserService()
 role_service = RoleService()
 ldap_service = LDAPService()
+guidance_service = GuidanceService()
 settings = get_settings()
 db = get_db()
 
@@ -1880,6 +1953,211 @@ async def delete_ldap_cluster_mapping(
         raise HTTPException(status_code=404, detail="Cluster mapping not found")
 
     return None
+
+
+# ==================== Guidance System: API Guidance ====================
+
+@app.get("/api/guidance/apis")
+async def list_api_guidance(_user: User = Depends(require_auth)):
+    """List all API guidance entries."""
+    guidance = await guidance_service.list_api_guidance(active_only=False)
+    return [g.to_dict() for g in guidance]
+
+
+@app.get("/api/guidance/apis/{api_name}")
+async def get_api_guidance(api_name: str, _user: User = Depends(require_auth)):
+    """Get guidance for a specific API."""
+    guidance = await guidance_service.get_api_guidance(api_name)
+    if not guidance:
+        raise HTTPException(status_code=404, detail="API guidance not found")
+    return guidance.to_dict()
+
+
+@app.put("/api/guidance/apis/{api_name}")
+async def upsert_api_guidance(
+    api_name: str,
+    data: APIGuidanceCreate,
+    _admin: User = Depends(require_superuser),
+):
+    """Create or update API guidance."""
+    guidance = await guidance_service.upsert_api_guidance(api_name=api_name, **data.dict())
+    return guidance.to_dict()
+
+
+@app.delete("/api/guidance/apis/{api_name}", status_code=204)
+async def delete_api_guidance(api_name: str, _admin: User = Depends(require_superuser)):
+    """Delete API guidance."""
+    if not await guidance_service.delete_api_guidance(api_name):
+        raise HTTPException(status_code=404, detail="API guidance not found")
+
+
+# ==================== Guidance System: Category Guidance ====================
+
+@app.get("/api/guidance/categories")
+async def list_category_guidance(
+    api_name: Optional[str] = Query(None),
+    _user: User = Depends(require_auth),
+):
+    """List category guidance, optionally filtered by API."""
+    guidance = await guidance_service.list_category_guidance(api_name=api_name, active_only=False)
+    return [g.to_dict() for g in guidance]
+
+
+@app.put("/api/guidance/categories/{api_name}/{category_name:path}")
+async def upsert_category_guidance(
+    api_name: str,
+    category_name: str,
+    data: CategoryGuidanceCreate,
+    _admin: User = Depends(require_superuser),
+):
+    """Create or update category guidance."""
+    guidance = await guidance_service.upsert_category_guidance(
+        api_name=api_name,
+        category_name=category_name,
+        **data.dict()
+    )
+    return guidance.to_dict()
+
+
+@app.delete("/api/guidance/categories/{id}", status_code=204)
+async def delete_category_guidance(id: int, _admin: User = Depends(require_superuser)):
+    """Delete category guidance."""
+    if not await guidance_service.delete_category_guidance(id):
+        raise HTTPException(status_code=404, detail="Category guidance not found")
+
+
+# ==================== Guidance System: Workflows ====================
+
+@app.get("/api/guidance/workflows")
+async def list_workflows(
+    use_case_tag: Optional[str] = Query(None),
+    _user: User = Depends(require_auth),
+):
+    """List all workflows."""
+    workflows = await guidance_service.list_workflows(active_only=False, use_case_tag=use_case_tag)
+    return [w.to_dict() for w in workflows]
+
+
+@app.post("/api/guidance/workflows", status_code=201)
+async def create_workflow(data: WorkflowCreate, _admin: User = Depends(require_superuser)):
+    """Create a new workflow."""
+    workflow = await guidance_service.create_workflow(**data.dict())
+    return workflow.to_dict()
+
+
+@app.get("/api/guidance/workflows/{workflow_id}")
+async def get_workflow(workflow_id: int, _user: User = Depends(require_auth)):
+    """Get workflow by ID with steps."""
+    workflow = await guidance_service.get_workflow(workflow_id)
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    return workflow.to_dict()
+
+
+@app.put("/api/guidance/workflows/{workflow_id}")
+async def update_workflow(
+    workflow_id: int,
+    data: WorkflowUpdate,
+    _admin: User = Depends(require_superuser),
+):
+    """Update workflow."""
+    workflow = await guidance_service.update_workflow(
+        workflow_id,
+        **{k: v for k, v in data.dict().items() if v is not None}
+    )
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    return workflow.to_dict()
+
+
+@app.delete("/api/guidance/workflows/{workflow_id}", status_code=204)
+async def delete_workflow(workflow_id: int, _admin: User = Depends(require_superuser)):
+    """Delete workflow."""
+    if not await guidance_service.delete_workflow(workflow_id):
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+
+@app.put("/api/guidance/workflows/{workflow_id}/steps")
+async def set_workflow_steps(
+    workflow_id: int,
+    steps: List[WorkflowStepCreate],
+    _admin: User = Depends(require_superuser),
+):
+    """Set workflow steps (replaces existing)."""
+    workflow = await guidance_service.set_workflow_steps(workflow_id, [s.dict() for s in steps])
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    return workflow.to_dict()
+
+
+# ==================== Guidance System: Tool Overrides ====================
+
+@app.get("/api/guidance/tools")
+async def list_tool_overrides(_user: User = Depends(require_auth)):
+    """List all tool description overrides."""
+    overrides = await guidance_service.list_tool_overrides(active_only=False)
+    return [o.to_dict() for o in overrides]
+
+
+@app.get("/api/guidance/tools/{operation_name:path}")
+async def get_tool_override(operation_name: str, _user: User = Depends(require_auth)):
+    """Get tool override by operation name."""
+    override = await guidance_service.get_tool_override(operation_name)
+    if not override:
+        raise HTTPException(status_code=404, detail="Tool override not found")
+    return override.to_dict()
+
+
+@app.put("/api/guidance/tools/{operation_name:path}")
+async def upsert_tool_override(
+    operation_name: str,
+    data: ToolOverrideCreate,
+    _admin: User = Depends(require_superuser),
+):
+    """Create or update tool description override."""
+    override = await guidance_service.upsert_tool_override(operation_name=operation_name, **data.dict())
+    return override.to_dict()
+
+
+@app.delete("/api/guidance/tools/{operation_name:path}", status_code=204)
+async def delete_tool_override(operation_name: str, _admin: User = Depends(require_superuser)):
+    """Delete tool override."""
+    if not await guidance_service.delete_tool_override(operation_name):
+        raise HTTPException(status_code=404, detail="Tool override not found")
+
+
+# ==================== Guidance System: System Prompt ====================
+
+@app.get("/api/guidance/system-prompt/sections")
+async def list_system_prompt_sections(_user: User = Depends(require_auth)):
+    """List all system prompt sections."""
+    sections = await guidance_service.get_system_prompt_sections(active_only=False)
+    return [s.to_dict() for s in sections]
+
+
+@app.put("/api/guidance/system-prompt/sections/{section_name}")
+async def upsert_system_prompt_section(
+    section_name: str,
+    data: SystemPromptSectionCreate,
+    _admin: User = Depends(require_superuser),
+):
+    """Create or update system prompt section."""
+    section = await guidance_service.upsert_system_prompt_section(section_name=section_name, **data.dict())
+    return section.to_dict()
+
+
+@app.delete("/api/guidance/system-prompt/sections/{section_name}", status_code=204)
+async def delete_system_prompt_section(section_name: str, _admin: User = Depends(require_superuser)):
+    """Delete system prompt section."""
+    if not await guidance_service.delete_system_prompt_section(section_name):
+        raise HTTPException(status_code=404, detail="Section not found")
+
+
+@app.get("/api/guidance/system-prompt")
+async def get_generated_system_prompt(_user: User = Depends(require_auth)):
+    """Get the complete generated system prompt."""
+    prompt = await guidance_service.generate_system_prompt()
+    return {"prompt": prompt}
 
 
 if __name__ == "__main__":

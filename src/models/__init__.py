@@ -6,6 +6,14 @@ from .user import User, UserSession
 from .role import Role, RoleOperation, UserRole
 from .user_cluster import UserCluster
 from .ldap_config import LDAPConfig, LDAPGroupRoleMapping, LDAPGroupClusterMapping
+from .guidance import (
+    APIGuidance,
+    CategoryGuidance,
+    Workflow,
+    WorkflowStep,
+    ToolDescriptionOverride,
+    SystemPromptSection,
+)
 
 __all__ = [
     "Cluster",
@@ -21,4 +29,10 @@ __all__ = [
     "LDAPConfig",
     "LDAPGroupRoleMapping",
     "LDAPGroupClusterMapping",
+    "APIGuidance",
+    "CategoryGuidance",
+    "Workflow",
+    "WorkflowStep",
+    "ToolDescriptionOverride",
+    "SystemPromptSection",
 ]

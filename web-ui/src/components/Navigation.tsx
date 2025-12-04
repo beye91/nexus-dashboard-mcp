@@ -13,6 +13,7 @@ export default function Navigation() {
     { href: '/clusters', label: 'Clusters' },
     { href: '/security', label: 'Security' },
     { href: '/audit', label: 'Audit Logs' },
+    { href: '/guidance', label: 'API Guidance' },
     { href: '/health', label: 'Health' },
     { href: '/docs', label: 'Documentation' },
   ];

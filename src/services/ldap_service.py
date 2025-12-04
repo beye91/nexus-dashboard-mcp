@@ -308,17 +308,32 @@ class LDAPService:
             search_base = self._get_user_search_base(config)
             search_filter = f"(&{config.user_search_filter}({config.username_attribute}={ldap3.utils.conv.escape_filter_chars(username)}))"
 
-            conn.search(
-                search_base,
-                search_filter,
-                search_scope=SUBTREE,
-                attributes=[
-                    config.username_attribute,
-                    config.email_attribute,
-                    config.display_name_attribute,
-                    config.member_of_attribute,
-                ],
-            )
+            # Build attribute list - memberOf is optional
+            auth_attributes = [
+                config.username_attribute,
+                config.email_attribute,
+                config.display_name_attribute,
+            ]
+
+            # Try with memberOf first, fall back without it if not supported
+            try:
+                conn.search(
+                    search_base,
+                    search_filter,
+                    search_scope=SUBTREE,
+                    attributes=auth_attributes + [config.member_of_attribute],
+                )
+            except LDAPException as member_err:
+                if "invalid attribute" in str(member_err).lower() or "memberof" in str(member_err).lower():
+                    logger.warning(f"memberOf attribute not supported for auth: {member_err}")
+                    conn.search(
+                        search_base,
+                        search_filter,
+                        search_scope=SUBTREE,
+                        attributes=auth_attributes,
+                    )
+                else:
+                    raise
 
             if not conn.entries:
                 conn.unbind()
@@ -382,17 +397,32 @@ class LDAPService:
 
             search_base = self._get_user_search_base(config)
 
-            conn.search(
-                search_base,
-                config.user_search_filter,
-                search_scope=SUBTREE,
-                attributes=[
-                    config.username_attribute,
-                    config.email_attribute,
-                    config.display_name_attribute,
-                    config.member_of_attribute,
-                ],
-            )
+            # Build attribute list - memberOf is optional since not all LDAP servers support it
+            search_attributes = [
+                config.username_attribute,
+                config.email_attribute,
+                config.display_name_attribute,
+            ]
+
+            # Try with memberOf first, fall back without it if not supported
+            try:
+                conn.search(
+                    search_base,
+                    config.user_search_filter,
+                    search_scope=SUBTREE,
+                    attributes=search_attributes + [config.member_of_attribute],
+                )
+            except LDAPException as e:
+                if "invalid attribute" in str(e).lower() or "memberof" in str(e).lower():
+                    logger.warning(f"memberOf attribute not supported, syncing without group information: {e}")
+                    conn.search(
+                        search_base,
+                        config.user_search_filter,
+                        search_scope=SUBTREE,
+                        attributes=search_attributes,
+                    )
+                else:
+                    raise
 
             created = 0
             updated = 0

@@ -327,3 +327,83 @@ export interface LDAPSyncResult {
 export interface AssignClustersRequest {
   cluster_ids: number[];
 }
+
+// ==================== API Guidance Types ====================
+
+export interface APIGuidance {
+  id: number;
+  api_name: string;
+  display_name: string;
+  description: string | null;
+  when_to_use: string | null;
+  when_not_to_use: string | null;
+  examples: any[];
+  priority: number;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CategoryGuidance {
+  id: number;
+  api_name: string;
+  category_name: string;
+  display_name: string | null;
+  description: string | null;
+  when_to_use: string | null;
+  related_categories: string[];
+  priority: number;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface WorkflowStep {
+  id: number;
+  workflow_id: number;
+  step_order: number;
+  operation_name: string;
+  description: string | null;
+  expected_output: string | null;
+  optional: boolean;
+  fallback_operation: string | null;
+  created_at: string | null;
+}
+
+export interface Workflow {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string | null;
+  problem_statement: string | null;
+  use_case_tags: string[];
+  is_active: boolean;
+  priority: number;
+  steps_count: number;
+  steps?: WorkflowStep[];
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ToolDescriptionOverride {
+  id: number;
+  operation_name: string;
+  enhanced_description: string | null;
+  usage_hint: string | null;
+  related_tools: string[];
+  common_parameters: any[];
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface SystemPromptSection {
+  id: number;
+  section_name: string;
+  section_order: number;
+  title: string | null;
+  content: string;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}

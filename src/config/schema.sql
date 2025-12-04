@@ -261,3 +261,125 @@ COMMENT ON TABLE roles IS 'Roles for role-based access control';
 COMMENT ON TABLE role_operations IS 'Maps roles to allowed operations';
 COMMENT ON TABLE user_roles IS 'Many-to-many relationship between users and roles';
 COMMENT ON TABLE user_sessions IS 'Active user sessions for authentication';
+
+-- ==================== API Guidance System Tables ====================
+
+-- API-level guidance table
+CREATE TABLE IF NOT EXISTS api_guidance (
+    id SERIAL PRIMARY KEY,
+    api_name VARCHAR(50) NOT NULL UNIQUE,
+    display_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    when_to_use TEXT,
+    when_not_to_use TEXT,
+    examples JSONB DEFAULT '[]',
+    priority INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Category/tag guidance table
+CREATE TABLE IF NOT EXISTS category_guidance (
+    id SERIAL PRIMARY KEY,
+    api_name VARCHAR(50) NOT NULL,
+    category_name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255),
+    description TEXT,
+    when_to_use TEXT,
+    related_categories JSONB DEFAULT '[]',
+    priority INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(api_name, category_name)
+);
+
+-- Workflow definitions table
+CREATE TABLE IF NOT EXISTS workflows (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    display_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    problem_statement TEXT,
+    use_case_tags JSONB DEFAULT '[]',
+    is_active BOOLEAN DEFAULT TRUE,
+    priority INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Workflow steps table
+CREATE TABLE IF NOT EXISTS workflow_steps (
+    id SERIAL PRIMARY KEY,
+    workflow_id INTEGER NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    step_order INTEGER NOT NULL,
+    operation_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    expected_output TEXT,
+    optional BOOLEAN DEFAULT FALSE,
+    fallback_operation VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(workflow_id, step_order)
+);
+
+-- Tool description overrides table
+CREATE TABLE IF NOT EXISTS tool_description_overrides (
+    id SERIAL PRIMARY KEY,
+    operation_name VARCHAR(255) NOT NULL UNIQUE,
+    enhanced_description TEXT,
+    usage_hint TEXT,
+    related_tools JSONB DEFAULT '[]',
+    common_parameters JSONB DEFAULT '[]',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- System prompt sections table
+CREATE TABLE IF NOT EXISTS system_prompt_sections (
+    id SERIAL PRIMARY KEY,
+    section_name VARCHAR(100) NOT NULL UNIQUE,
+    section_order INTEGER DEFAULT 0,
+    title VARCHAR(255),
+    content TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Guidance indexes
+CREATE INDEX IF NOT EXISTS idx_api_guidance_api_name ON api_guidance(api_name);
+CREATE INDEX IF NOT EXISTS idx_api_guidance_priority ON api_guidance(priority);
+CREATE INDEX IF NOT EXISTS idx_api_guidance_is_active ON api_guidance(is_active);
+CREATE INDEX IF NOT EXISTS idx_category_guidance_api_name ON category_guidance(api_name);
+CREATE INDEX IF NOT EXISTS idx_category_guidance_category_name ON category_guidance(category_name);
+CREATE INDEX IF NOT EXISTS idx_workflows_name ON workflows(name);
+CREATE INDEX IF NOT EXISTS idx_workflows_is_active ON workflows(is_active);
+CREATE INDEX IF NOT EXISTS idx_workflow_steps_workflow_id ON workflow_steps(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_tool_description_overrides_operation_name ON tool_description_overrides(operation_name);
+CREATE INDEX IF NOT EXISTS idx_system_prompt_sections_section_name ON system_prompt_sections(section_name);
+
+-- Default API guidance
+INSERT INTO api_guidance (api_name, display_name, description, when_to_use, when_not_to_use, priority)
+VALUES
+    ('manage', 'Manage API', 'Core management operations for VLAN, VRF, BD, EPG, and policy configuration', 'Use for creating, updating, or deleting network configurations.', 'Avoid for read-only operations or analysis tasks.', 10),
+    ('analyze', 'Analyze API', 'Network analysis and troubleshooting operations', 'Use for troubleshooting connectivity issues and analyzing network behavior.', 'Avoid for configuration changes.', 20),
+    ('infra', 'Infrastructure API', 'Infrastructure operations for fabric nodes and interfaces', 'Use for infrastructure queries and node status.', 'Avoid for policy configuration.', 30),
+    ('one_manage', 'OneManage API', 'Centralized management across multiple network domains', 'Use for cross-domain operations.', 'Avoid for single-fabric operations.', 40)
+ON CONFLICT (api_name) DO NOTHING;
+
+-- Default system prompt sections
+INSERT INTO system_prompt_sections (section_name, section_order, title, content)
+VALUES
+    ('overview', 10, 'API Overview', 'You are working with Cisco Nexus Dashboard APIs. Select the appropriate API based on the task.'),
+    ('api_selection', 20, 'API Selection Guidelines', 'Identify if the task is configuration (manage), troubleshooting (analyze), infrastructure query (infra), or cross-domain (one_manage).'),
+    ('best_practices', 30, 'Best Practices', 'Always verify prerequisites before configuration changes. Use read operations to validate state.')
+ON CONFLICT (section_name) DO NOTHING;
+
+COMMENT ON TABLE api_guidance IS 'API-level guidance for tool selection';
+COMMENT ON TABLE category_guidance IS 'Category/tag specific guidance';
+COMMENT ON TABLE workflows IS 'Multi-step workflow definitions';
+COMMENT ON TABLE workflow_steps IS 'Individual steps within workflows';
+COMMENT ON TABLE tool_description_overrides IS 'Enhanced tool descriptions';
+COMMENT ON TABLE system_prompt_sections IS 'System prompt configuration sections';

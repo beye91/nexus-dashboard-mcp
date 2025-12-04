@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 # Use MCP SDK properly
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import Tool, TextContent, Resource
 
 from src.config.settings import get_settings
 from src.core.api_loader import APILoader
@@ -44,6 +44,10 @@ class NexusDashboardMCP:
         # Loaded specs and tools
         self.loaded_apis: Dict[str, Dict[str, Any]] = {}
         self.operations: List[Dict[str, Any]] = []
+
+        # Guidance cache
+        self._tool_overrides: Dict[str, Dict[str, Any]] = {}
+        self._guidance_loaded = False
 
     async def load_api(self, api_name: str) -> bool:
         """Load a specific Nexus Dashboard API.
@@ -101,6 +105,43 @@ class NexusDashboardMCP:
 
         return True
 
+    async def load_guidance_cache(self) -> None:
+        """Load tool description overrides from database into cache."""
+        try:
+            from src.services.guidance_service import GuidanceService
+            guidance_service = GuidanceService()
+            overrides = await guidance_service.get_all_tool_overrides()
+            self._tool_overrides = {
+                op_name: override.to_dict()
+                for op_name, override in overrides.items()
+            }
+            self._guidance_loaded = True
+            logger.info(f"Loaded {len(self._tool_overrides)} tool description overrides")
+        except Exception as e:
+            logger.warning(f"Failed to load guidance cache: {e}")
+            self._tool_overrides = {}
+
+    async def get_system_prompt(self) -> str:
+        """Get the generated system prompt from guidance service."""
+        try:
+            from src.services.guidance_service import GuidanceService
+            guidance_service = GuidanceService()
+            return await guidance_service.generate_system_prompt()
+        except Exception as e:
+            logger.warning(f"Failed to generate system prompt: {e}")
+            return "Nexus Dashboard MCP Server - Network automation APIs"
+
+    async def get_workflows_json(self) -> str:
+        """Get workflows as JSON for MCP resource."""
+        try:
+            from src.services.guidance_service import GuidanceService
+            guidance_service = GuidanceService()
+            workflows = await guidance_service.list_workflows(active_only=True)
+            return json.dumps([w.to_dict() for w in workflows], indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to get workflows: {e}")
+            return "[]"
+
     async def load_all_apis(self) -> int:
         """Load all enabled APIs.
 
@@ -143,6 +184,14 @@ class NexusDashboardMCP:
         tool_description = f"{method} {path}"
         if summary:
             tool_description += f" - {summary}"
+
+        # Add enhanced description from guidance if available
+        if tool_name in self._tool_overrides:
+            override = self._tool_overrides[tool_name]
+            if override.get("enhanced_description"):
+                tool_description += f"\n\n{override['enhanced_description']}"
+            if override.get("usage_hint"):
+                tool_description += f"\n\n[Hint: {override['usage_hint']}]"
 
         # Extract path parameters from path (e.g., {fabricName}, {switchId})
         import re
@@ -340,6 +389,9 @@ class NexusDashboardMCP:
 
             logger.info(f"Successfully loaded {loaded_count} APIs with {len(self.operations)} total operations")
 
+            # Load guidance cache for enhanced tool descriptions
+            await self.load_guidance_cache()
+
             # Register tool handler
             @self.server.call_tool()
             async def handle_tool_call(name: str, arguments: dict) -> List[TextContent]:
@@ -356,6 +408,35 @@ class NexusDashboardMCP:
                 return tools
 
             logger.info(f"Registered tool handlers for {len(self.operations)} operations across {loaded_count} APIs")
+
+            # Register MCP resources for guidance
+            @self.server.list_resources()
+            async def list_resources() -> List[Resource]:
+                return [
+                    Resource(
+                        uri="nexus://guidance/system-prompt",
+                        name="API Guidance System Prompt",
+                        description="Complete guidance for using Nexus Dashboard APIs including API selection, workflows, and best practices",
+                        mimeType="text/plain"
+                    ),
+                    Resource(
+                        uri="nexus://guidance/workflows",
+                        name="Common Workflows",
+                        description="Pre-defined workflows for common network automation tasks",
+                        mimeType="application/json"
+                    )
+                ]
+
+            @self.server.read_resource()
+            async def read_resource(uri: str) -> str:
+                if uri == "nexus://guidance/system-prompt":
+                    return await self.get_system_prompt()
+                elif uri == "nexus://guidance/workflows":
+                    return await self.get_workflows_json()
+                else:
+                    raise ValueError(f"Unknown resource URI: {uri}")
+
+            logger.info("Registered MCP resources for API guidance")
 
             # Log edit mode status from database
             edit_mode = await self.security_middleware.is_edit_mode_enabled()

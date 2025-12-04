@@ -25,6 +25,12 @@ import type {
   LDAPClusterMapping,
   LDAPTestResult,
   LDAPSyncResult,
+  APIGuidance,
+  CategoryGuidance,
+  Workflow,
+  WorkflowStep,
+  ToolDescriptionOverride,
+  SystemPromptSection,
 } from '@/types';
 
 // Use relative URLs - Next.js rewrites will proxy to the backend
@@ -206,5 +212,60 @@ export const api = {
       apiClient.post<LDAPClusterMapping>(`/api/ldap/configs/${configId}/cluster-mappings`, data),
     deleteClusterMapping: (configId: number, mappingId: number) =>
       apiClient.delete(`/api/ldap/configs/${configId}/cluster-mappings/${mappingId}`),
+  },
+
+  // API Guidance
+  guidance: {
+    // API Guidance
+    listApiGuidance: () =>
+      apiClient.get<APIGuidance[]>('/api/guidance/apis'),
+    getApiGuidance: (apiName: string) =>
+      apiClient.get<APIGuidance>(`/api/guidance/apis/${apiName}`),
+    upsertApiGuidance: (apiName: string, data: any) =>
+      apiClient.put<APIGuidance>(`/api/guidance/apis/${apiName}`, data),
+    deleteApiGuidance: (apiName: string) =>
+      apiClient.delete(`/api/guidance/apis/${apiName}`),
+
+    // Category Guidance
+    listCategoryGuidance: (apiName?: string) =>
+      apiClient.get<CategoryGuidance[]>('/api/guidance/categories', { params: apiName ? { api_name: apiName } : {} }),
+    upsertCategoryGuidance: (apiName: string, categoryName: string, data: any) =>
+      apiClient.put<CategoryGuidance>(`/api/guidance/categories/${apiName}/${encodeURIComponent(categoryName)}`, data),
+    deleteCategoryGuidance: (id: number) =>
+      apiClient.delete(`/api/guidance/categories/${id}`),
+
+    // Workflows
+    listWorkflows: (useCaseTag?: string) =>
+      apiClient.get<Workflow[]>('/api/guidance/workflows', { params: useCaseTag ? { use_case_tag: useCaseTag } : {} }),
+    getWorkflow: (id: number) =>
+      apiClient.get<Workflow>(`/api/guidance/workflows/${id}`),
+    createWorkflow: (data: any) =>
+      apiClient.post<Workflow>('/api/guidance/workflows', data),
+    updateWorkflow: (id: number, data: any) =>
+      apiClient.put<Workflow>(`/api/guidance/workflows/${id}`, data),
+    deleteWorkflow: (id: number) =>
+      apiClient.delete(`/api/guidance/workflows/${id}`),
+    setWorkflowSteps: (id: number, steps: any[]) =>
+      apiClient.put<Workflow>(`/api/guidance/workflows/${id}/steps`, steps),
+
+    // Tool Overrides
+    listToolOverrides: () =>
+      apiClient.get<ToolDescriptionOverride[]>('/api/guidance/tools'),
+    getToolOverride: (operationName: string) =>
+      apiClient.get<ToolDescriptionOverride>(`/api/guidance/tools/${encodeURIComponent(operationName)}`),
+    upsertToolOverride: (operationName: string, data: any) =>
+      apiClient.put<ToolDescriptionOverride>(`/api/guidance/tools/${encodeURIComponent(operationName)}`, data),
+    deleteToolOverride: (operationName: string) =>
+      apiClient.delete(`/api/guidance/tools/${encodeURIComponent(operationName)}`),
+
+    // System Prompt
+    listSystemPromptSections: () =>
+      apiClient.get<SystemPromptSection[]>('/api/guidance/system-prompt/sections'),
+    upsertSystemPromptSection: (sectionName: string, data: any) =>
+      apiClient.put<SystemPromptSection>(`/api/guidance/system-prompt/sections/${sectionName}`, data),
+    deleteSystemPromptSection: (sectionName: string) =>
+      apiClient.delete(`/api/guidance/system-prompt/sections/${sectionName}`),
+    getGeneratedSystemPrompt: () =>
+      apiClient.get<{ prompt: string }>('/api/guidance/system-prompt'),
   },
 };
