@@ -28,18 +28,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [setupRequired, setSetupRequired] = useState(false);
 
   const refreshAuth = async () => {
+    console.log('[AuthProvider] refreshAuth called, pathname:', pathname);
     try {
       const response = await api.auth.me();
+      console.log('[AuthProvider] me() response:', response.data);
       if (response.data.setup_required) {
+        console.log('[AuthProvider] Setup required');
         setSetupRequired(true);
         setUser(null);
         if (pathname !== '/login') {
           router.push('/login');
         }
       } else if (response.data.authenticated && response.data.user) {
+        console.log('[AuthProvider] Authenticated, setting user:', response.data.user.username);
         setUser(response.data.user);
         setSetupRequired(false);
       } else {
+        console.log('[AuthProvider] Not authenticated, redirecting to login');
         setUser(null);
         setSetupRequired(false);
         if (!PUBLIC_ROUTES.includes(pathname)) {
@@ -47,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch (error) {
-      console.error('Auth check failed:', error);
+      console.error('[AuthProvider] Auth check failed:', error);
       setUser(null);
       if (!PUBLIC_ROUTES.includes(pathname)) {
         router.push('/login');
