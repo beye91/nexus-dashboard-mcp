@@ -7,11 +7,6 @@ export async function GET(request: NextRequest) {
     // Get the session cookie to forward
     const sessionCookie = request.cookies.get('nexus_session');
 
-    console.log('[/api/auth/me] Session cookie present:', !!sessionCookie);
-    if (sessionCookie) {
-      console.log('[/api/auth/me] Cookie value (first 20 chars):', sessionCookie.value.substring(0, 20) + '...');
-    }
-
     // Forward the request to the backend
     const backendResponse = await fetch(`${BACKEND_URL}/api/auth/me`, {
       method: 'GET',
@@ -22,8 +17,6 @@ export async function GET(request: NextRequest) {
     });
 
     const data = await backendResponse.json();
-
-    console.log('[/api/auth/me] Backend response:', JSON.stringify(data));
 
     // Create the response
     return NextResponse.json(data, { status: backendResponse.status });

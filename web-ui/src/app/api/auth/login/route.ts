@@ -6,8 +6,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    console.log('[/api/auth/login] Received login request for:', body.username);
-
     // Forward the request to the backend
     const backendResponse = await fetch(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
@@ -19,9 +17,6 @@ export async function POST(request: NextRequest) {
 
     const data = await backendResponse.json();
 
-    console.log('[/api/auth/login] Backend response status:', backendResponse.status);
-    console.log('[/api/auth/login] Token present in response:', !!data.token);
-
     // Create the response
     const response = NextResponse.json(data, { status: backendResponse.status });
 
@@ -29,7 +24,6 @@ export async function POST(request: NextRequest) {
     // The backend returns the token in the response body, so we can set it here
     // This ensures the cookie is set correctly for the browser's domain
     if (backendResponse.ok && data.token) {
-      console.log('[/api/auth/login] Setting session cookie, token length:', data.token.length);
       response.cookies.set({
         name: 'nexus_session',
         value: data.token,
@@ -39,7 +33,6 @@ export async function POST(request: NextRequest) {
         path: '/',
         maxAge: 24 * 60 * 60, // 24 hours
       });
-      console.log('[/api/auth/login] Cookie set successfully');
     }
 
     return response;
