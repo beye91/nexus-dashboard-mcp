@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api-client';
 
@@ -43,7 +43,7 @@ export default function LoginPage() {
   };
 
   // Check if setup is required on mount
-  useState(() => {
+  useEffect(() => {
     const checkAuth = async () => {
       try {
         const response = await api.auth.me();
@@ -57,7 +57,7 @@ export default function LoginPage() {
       }
     };
     checkAuth();
-  });
+  }, [router]);
 
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
