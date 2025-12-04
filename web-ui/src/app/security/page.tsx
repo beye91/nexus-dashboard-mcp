@@ -28,6 +28,11 @@ export default function SecurityPage() {
   const [config, setConfig] = useState<SecurityConfig | null>(null);
   const [editMode, setEditMode] = useState(false);
 
+  // API Token state
+  const [showTokenModal, setShowTokenModal] = useState(false);
+  const [generatedToken, setGeneratedToken] = useState<string | null>(null);
+  const [tokenUsername, setTokenUsername] = useState<string>('');
+
   // Form states
   const [userForm, setUserForm] = useState<CreateUserRequest & { role_ids: number[] }>({
     username: '',
@@ -132,6 +137,28 @@ export default function SecurityPage() {
       setUsers(res.data);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to delete user');
+    }
+  };
+
+  const handleRegenerateToken = async (user: User) => {
+    if (!confirm(`Regenerate API token for ${user.username}? The old token will stop working immediately.`)) return;
+    try {
+      const res = await api.users.regenerateToken(user.id);
+      setGeneratedToken(res.data.api_token);
+      setTokenUsername(user.username);
+      setShowTokenModal(true);
+      showSuccess('API token regenerated successfully');
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to regenerate token');
+    }
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showSuccess('Copied to clipboard');
+    } catch (err) {
+      setError('Failed to copy to clipboard');
     }
   };
 
@@ -332,6 +359,7 @@ export default function SecurityPage() {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Roles</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Edit Mode</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">API Token</th>
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
@@ -374,6 +402,17 @@ export default function SecurityPage() {
                               {user.is_active ? 'Active' : 'Inactive'}
                             </span>
                           </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <button
+                              onClick={() => handleRegenerateToken(user)}
+                              className="px-3 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200 flex items-center"
+                            >
+                              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                              </svg>
+                              Generate
+                            </button>
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                             <button onClick={() => openUserModal(user)} className="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
                             <button onClick={() => handleDeleteUser(user.id)} className="text-red-600 hover:text-red-800">Delete</button>
@@ -382,7 +421,7 @@ export default function SecurityPage() {
                       ))}
                       {users.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                          <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                             No users found. Click "Add User" to create one.
                           </td>
                         </tr>
@@ -687,6 +726,84 @@ export default function SecurityPage() {
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
                   {editingRole ? 'Save Changes' : 'Create Role'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* API Token Modal */}
+        {showTokenModal && generatedToken && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-lg border border-gray-200 shadow-xl">
+              <div className="flex items-center mb-4">
+                <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center mr-3">
+                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">API Token Generated</h3>
+                  <p className="text-sm text-gray-500">For user: {tokenUsername}</p>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-4">
+                <div className="flex">
+                  <svg className="h-5 w-5 text-yellow-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-sm text-yellow-700">
+                    Copy this token now. It won't be shown again!
+                  </p>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">API Token</label>
+                <div className="flex">
+                  <input
+                    type="text"
+                    readOnly
+                    value={generatedToken}
+                    className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-l-md text-gray-900 font-mono text-sm"
+                  />
+                  <button
+                    onClick={() => copyToClipboard(generatedToken)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 flex items-center"
+                  >
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                    </svg>
+                    Copy
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-md p-3 mb-4">
+                <p className="text-sm font-medium text-gray-700 mb-2">Claude Desktop Configuration:</p>
+                <pre className="text-xs bg-gray-900 text-green-400 p-3 rounded overflow-x-auto">
+{`{
+  "mcpServers": {
+    "nexus-dashboard": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote",
+        "http://<host>:8002/mcp/sse"],
+      "env": {
+        "API_TOKEN": "${generatedToken}"
+      }
+    }
+  }
+}`}
+                </pre>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={() => { setShowTokenModal(false); setGeneratedToken(null); setTokenUsername(''); }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Done
                 </button>
               </div>
             </div>
