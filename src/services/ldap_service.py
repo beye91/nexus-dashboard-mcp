@@ -337,16 +337,19 @@ class LDAPService:
 
             if not conn.entries:
                 conn.unbind()
-                logger.debug(f"LDAP user not found: {username}")
+                logger.warning(f"LDAP user not found in search: {username}")
                 return False, None
 
             user_entry = conn.entries[0]
             user_dn = user_entry.entry_dn
+            logger.info(f"Found LDAP user {username} with DN: {user_dn}")
             conn.unbind()
 
             # Try to bind as the user to verify password
+            logger.info(f"Attempting to bind as user DN: {user_dn}")
             user_conn = self._get_connection(config, user_dn, password)
             user_conn.unbind()
+            logger.info(f"User bind successful for: {username}")
 
             # Extract user info
             user_info = {
@@ -361,14 +364,14 @@ class LDAPService:
             logger.info(f"LDAP authentication successful for: {username}")
             return True, user_info
 
-        except LDAPBindError:
-            logger.debug(f"LDAP bind failed for user: {username}")
+        except LDAPBindError as e:
+            logger.warning(f"LDAP bind failed for user {username}: {e}")
             return False, None
         except LDAPException as e:
             logger.warning(f"LDAP authentication error for {username}: {e}")
             return False, None
         except Exception as e:
-            logger.exception(f"Unexpected LDAP error for {username}")
+            logger.exception(f"Unexpected LDAP error for {username}: {e}")
             return False, None
 
     # ==================== User Synchronization ====================
