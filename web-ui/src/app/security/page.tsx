@@ -155,10 +155,30 @@ export default function SecurityPage() {
 
   const copyToClipboard = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text);
-      showSuccess('Copied to clipboard');
+      // Try modern clipboard API first
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        showSuccess('Copied to clipboard');
+      } else {
+        // Fallback for non-secure contexts (HTTP)
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        if (successful) {
+          showSuccess('Copied to clipboard');
+        } else {
+          setError('Failed to copy. Please select and copy manually.');
+        }
+      }
     } catch (err) {
-      setError('Failed to copy to clipboard');
+      setError('Failed to copy. Please select and copy manually.');
     }
   };
 
@@ -788,7 +808,7 @@ export default function SecurityPage() {
     "nexus-dashboard": {
       "command": "npx",
       "args": ["-y", "mcp-remote",
-        "http://<host>:8002/mcp/sse"],
+        "http://${typeof window !== 'undefined' ? window.location.hostname : '<host>'}:8002/mcp/sse"],
       "env": {
         "API_TOKEN": "${generatedToken}"
       }
