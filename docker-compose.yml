@@ -21,7 +21,25 @@ services:
       - nexus-mcp-network
     restart: unless-stopped
 
+  # Certificate initialization service (generates self-signed certs on first startup)
+  cert-init:
+    image: alpine:latest
+    container_name: nexus-mcp-cert-init
+    command: sh /scripts/generate-certs.sh
+    volumes:
+      - certs:/app/certs
+      - ./scripts:/scripts:ro
+    environment:
+      - CERT_DIR=/app/certs
+      - CERT_DAYS=${CERT_DAYS:-365}
+      - CERT_SERVER_IP=${CERT_SERVER_IP:-}
+      - CERT_CN=${CERT_CN:-nexus-dashboard}
+      - CERT_ORG=${CERT_ORG:-Nexus MCP}
+    networks:
+      - nexus-mcp-network
+
   # Nexus Dashboard MCP Server
+  # Uses host networking to access external networks (e.g., Nexus Dashboard)
   mcp-server:
     build:
       context: .
@@ -30,9 +48,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    network_mode: host
     environment:
-      # Database
-      DATABASE_URL: postgresql://mcp_user:changeme@postgres:5432/nexus_mcp
+      # Database (use localhost since we're on host network)
+      DATABASE_URL: postgresql://mcp_user:changeme@localhost:15432/nexus_mcp
 
       # Nexus Dashboard Connection
       NEXUS_CLUSTER_URL: ${NEXUS_CLUSTER_URL:-https://192.168.70.101}
@@ -52,8 +71,6 @@ services:
       - ./logs:/app/logs
     stdin_open: true
     tty: true
-    networks:
-      - nexus-mcp-network
     restart: unless-stopped
     command: >
       sh -c "
@@ -65,7 +82,8 @@ services:
         python src/main.py
       "
 
-  # FastAPI Web API Backend
+  # FastAPI Web API Backend (HTTPS)
+  # Uses host networking to access external networks (e.g., Nexus Dashboard)
   web-api:
     build:
       context: .
@@ -74,9 +92,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      cert-init:
+        condition: service_completed_successfully
+    network_mode: host
     environment:
-      # Database
-      DATABASE_URL: postgresql://mcp_user:changeme@postgres:5432/nexus_mcp
+      # Database (use localhost since we're on host network)
+      DATABASE_URL: postgresql://mcp_user:changeme@localhost:15432/nexus_mcp
 
       # Security
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-lGczu6Yzd2IrRrcJF3cOS8BsAOO6R-1761BRDusbCuM=}
@@ -84,23 +105,24 @@ services:
       # MCP Remote Access (optional - leave empty for open access)
       MCP_API_TOKEN: ${MCP_API_TOKEN:-}
 
+      # SSL/TLS Configuration
+      SSL_ENABLED: "true"
+      SSL_CERTFILE: /app/certs/server.crt
+      SSL_KEYFILE: /app/certs/server.key
+      WEB_API_PORT: "8444"
+      INTERNAL_HTTP_PORT: "8001"
+
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    ports:
-      - "8002:8000"
     volumes:
       - ./openapi_specs:/app/openapi_specs:ro
       - ./logs:/app/logs
-    networks:
-      - nexus-mcp-network
+      - ./scripts:/app/scripts:ro
+      - certs:/app/certs:ro
     restart: unless-stopped
-    command: >
-      sh -c "
-        echo 'Starting FastAPI Web API...' &&
-        uvicorn src.api.web_api:app --host 0.0.0.0 --port 8000 --reload
-      "
+    command: ["sh", "/app/scripts/start-web-api.sh"]
 
-  # Next.js Web UI
+  # Next.js Web UI (HTTPS)
   web-ui:
     build:
       context: ./web-ui
@@ -108,13 +130,20 @@ services:
     container_name: nexus-mcp-web-ui
     depends_on:
       - web-api
+      - cert-init
+    network_mode: host
     environment:
-      # Backend API URL for server-side proxying (uses Docker internal network)
-      - BACKEND_API_URL=http://web-api:8000
-    ports:
-      - "7001:3000"
-    networks:
-      - nexus-mcp-network
+      # Backend API URL for server-side proxying (web-api is on host network, port 8001)
+      - BACKEND_API_URL=http://localhost:8001
+      # SSL/TLS Configuration
+      - SSL_ENABLED=true
+      - SSL_CERTFILE=/app/certs/server.crt
+      - SSL_KEYFILE=/app/certs/server.key
+      - PORT=7443
+      # Allow self-signed certificates for internal communication
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+    volumes:
+      - certs:/app/certs:ro
     restart: unless-stopped
 
 networks:
@@ -123,4 +152,7 @@ networks:
 
 volumes:
   postgres_data:
+    driver: local
+  certs:
+    name: nexus-mcp-certs
     driver: local

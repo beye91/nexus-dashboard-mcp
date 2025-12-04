@@ -36,12 +36,20 @@ class AuthMiddleware:
             return self.api_client
 
         # Retrieve credentials from database
-        credentials = await self.credential_manager.get_credentials(self.cluster_name)
+        credentials = None
+        if self.cluster_name == "default":
+            # If using default, try to get the first active cluster
+            credentials = await self.credential_manager.get_first_active_cluster_credentials()
+            if credentials:
+                self.cluster_name = credentials["name"]
+                logger.info(f"Using first active cluster: {self.cluster_name}")
+        else:
+            credentials = await self.credential_manager.get_credentials(self.cluster_name)
 
         if not credentials:
             raise RuntimeError(
                 f"No credentials found for cluster '{self.cluster_name}'. "
-                f"Please configure credentials first."
+                f"Please configure a cluster in the web UI first."
             )
 
         # Create and authenticate API client

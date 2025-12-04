@@ -24,8 +24,13 @@ from src.services.user_service import UserService
 from src.services.role_service import RoleService
 from src.services.ldap_service import LDAPService
 from src.services.guidance_service import GuidanceService
+from src.services.nexus_api import NexusAPIClient
 from src.utils.encryption import decrypt_password
 from src.api.mcp_transport import router as mcp_router
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -817,15 +822,169 @@ async def delete_cluster(name: str):
 
 @app.post("/api/clusters/test", status_code=200)
 async def test_cluster_connection(cluster_data: ClusterCreate):
-    """Test cluster connection without saving."""
-    # This would require importing the auth middleware and testing the connection
-    # For now, return a simple success response
-    # TODO: Implement actual connection test
-    return {
-        "status": "success",
-        "message": "Connection test not yet implemented",
-        "url": cluster_data.url,
-    }
+    """Test cluster connection without saving.
+
+    Creates a temporary NexusAPIClient and attempts to authenticate
+    to verify the connection and credentials are valid.
+
+    If password is empty, attempt to use stored credentials from the database
+    by looking up the cluster by URL.
+    """
+    client = None
+    try:
+        url = cluster_data.url
+        username = cluster_data.username
+        password = cluster_data.password
+        verify_ssl = cluster_data.verify_ssl
+
+        # If password is empty, try to use stored credentials
+        if not password:
+            async with db.session() as session:
+                # Look up cluster by URL
+                result = await session.execute(
+                    select(Cluster).where(Cluster.url == url)
+                )
+                existing_cluster = result.scalar_one_or_none()
+
+                if existing_cluster:
+                    # Use stored credentials
+                    password = decrypt_password(existing_cluster.password_encrypted)
+                    username = existing_cluster.username
+                    verify_ssl = existing_cluster.verify_ssl
+                    logger.info(f"Using stored credentials for cluster at {url}")
+                else:
+                    return {
+                        "status": "error",
+                        "message": "Password is required for new clusters",
+                        "url": url,
+                    }
+
+        # Create a temporary API client with provided credentials
+        client = NexusAPIClient(
+            base_url=url,
+            username=username,
+            password=password,
+            verify_ssl=verify_ssl,
+        )
+
+        # Attempt to authenticate
+        success = await client.authenticate()
+
+        if success:
+            return {
+                "status": "success",
+                "message": "Connection successful! Authentication verified.",
+                "url": url,
+                "username": username,
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Authentication failed. Please check username and password.",
+                "url": url,
+            }
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Cluster connection test failed for {cluster_data.url}: {error_msg}")
+
+        # Provide more helpful error messages
+        if "Connection refused" in error_msg or "Connect call failed" in error_msg:
+            message = f"Cannot connect to {cluster_data.url}. Please verify the URL is correct and the server is accessible."
+        elif "SSL" in error_msg or "certificate" in error_msg.lower():
+            message = f"SSL/TLS error. Try disabling SSL verification if using self-signed certificates."
+        elif "timeout" in error_msg.lower():
+            message = f"Connection timed out. The server may be unreachable or slow to respond."
+        else:
+            message = f"Connection test failed: {error_msg}"
+
+        return {
+            "status": "error",
+            "message": message,
+            "url": cluster_data.url,
+            "error_detail": error_msg,
+        }
+    finally:
+        if client:
+            try:
+                await client.close()
+            except Exception:
+                pass
+
+
+@app.post("/api/clusters/{name}/test", status_code=200)
+async def test_existing_cluster_connection(name: str):
+    """Test connection to an existing cluster using stored credentials.
+
+    Args:
+        name: Cluster name
+
+    Returns:
+        Connection test result
+    """
+    client = None
+    try:
+        # Get stored credentials
+        credentials = await credential_manager.get_credentials(name)
+
+        if not credentials:
+            raise HTTPException(status_code=404, detail=f"Cluster '{name}' not found or inactive")
+
+        # Create a temporary API client with stored credentials
+        client = NexusAPIClient(
+            base_url=credentials["url"],
+            username=credentials["username"],
+            password=credentials["password"],
+            verify_ssl=credentials["verify_ssl"],
+        )
+
+        # Attempt to authenticate
+        success = await client.authenticate()
+
+        if success:
+            return {
+                "status": "success",
+                "message": "Connection successful! Authentication verified.",
+                "cluster": name,
+                "url": credentials["url"],
+                "username": credentials["username"],
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Authentication failed. Please check stored credentials.",
+                "cluster": name,
+                "url": credentials["url"],
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Cluster connection test failed for {name}: {error_msg}")
+
+        # Provide more helpful error messages
+        if "Connection refused" in error_msg or "Connect call failed" in error_msg:
+            message = "Cannot connect to cluster. Please verify the URL is correct and the server is accessible."
+        elif "SSL" in error_msg or "certificate" in error_msg.lower():
+            message = "SSL/TLS error. Try disabling SSL verification if using self-signed certificates."
+        elif "timeout" in error_msg.lower():
+            message = "Connection timed out. The server may be unreachable or slow to respond."
+        else:
+            message = f"Connection test failed: {error_msg}"
+
+        return {
+            "status": "error",
+            "message": message,
+            "cluster": name,
+            "error_detail": error_msg,
+        }
+    finally:
+        if client:
+            try:
+                await client.close()
+            except Exception:
+                pass
 
 
 # Security Configuration Endpoints

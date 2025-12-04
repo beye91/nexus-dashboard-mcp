@@ -77,6 +77,7 @@ export const api = {
     update: (name: string, data: any) => apiClient.put(`/api/clusters/${name}`, data),
     delete: (name: string) => apiClient.delete(`/api/clusters/${name}`),
     test: (data: any) => apiClient.post('/api/clusters/test', data),
+    testByName: (name: string) => apiClient.post(`/api/clusters/${name}/test`, {}),
   },
 
   // Security

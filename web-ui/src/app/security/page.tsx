@@ -1178,13 +1178,15 @@ export default function SecurityPage() {
       "command": "npx",
       "args": [
         "mcp-remote@latest",
-        "http://${typeof window !== 'undefined' ? window.location.hostname : 'YOUR_SERVER_IP'}:8002/mcp/sse",
-        "--allow-http",
+        "https://${typeof window !== 'undefined' ? window.location.hostname : 'YOUR_SERVER_IP'}:8444/mcp/sse",
         "--transport",
         "sse-only",
         "--header",
         "Authorization: Bearer ${generatedToken}"
-      ]
+      ],
+      "env": {
+        "NODE_TLS_REJECT_UNAUTHORIZED": "0"
+      }
     }
   }
 }`}

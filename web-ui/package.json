@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node https-server.js",
+    "start:http": "next start",
     "lint": "eslint"
   },
   "dependencies": {
@@ -13,6 +14,7 @@
     "axios": "^1.13.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "http-proxy": "^1.18.1",
     "lucide-react": "^0.554.0",
     "next": "16.0.3",
     "react": "19.2.0",

@@ -130,6 +130,44 @@ class CredentialManager:
             result = await session.execute(query)
             return list(result.scalars().all())
 
+    async def get_first_active_cluster(self) -> Optional[Cluster]:
+        """Get the first active cluster.
+
+        Returns:
+            First active Cluster instance or None if no active clusters
+        """
+        async with self.db.session() as session:
+            result = await session.execute(
+                select(Cluster).where(Cluster.is_active == True).limit(1)
+            )
+            return result.scalar_one_or_none()
+
+    async def get_first_active_cluster_credentials(self) -> Optional[dict]:
+        """Get credentials for the first active cluster.
+
+        Returns:
+            Dictionary with name, url, username, password, verify_ssl or None if not found
+        """
+        async with self.db.session() as session:
+            result = await session.execute(
+                select(Cluster).where(Cluster.is_active == True).limit(1)
+            )
+            cluster = result.scalar_one_or_none()
+
+            if not cluster:
+                return None
+
+            # Decrypt password
+            password = decrypt_password(cluster.password_encrypted)
+
+            return {
+                "name": cluster.name,
+                "url": cluster.url,
+                "username": cluster.username,
+                "password": password,
+                "verify_ssl": cluster.verify_ssl,
+            }
+
     async def delete_credentials(self, name: str) -> bool:
         """Delete cluster credentials.
 

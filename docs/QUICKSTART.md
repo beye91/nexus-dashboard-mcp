@@ -7,97 +7,100 @@
 ```bash
 # Verify Docker is installed
 docker --version
-docker-compose --version
+docker compose version
 ```
 
 ### 2. Clone and Configure
 
 ```bash
-cd nexus_dashboard_mcp
+git clone https://github.com/beye91/nexus-dashboard-mcp.git
+cd nexus-dashboard-mcp
 
-# Copy environment file
-cp .env.example .env
+# Configure your server's IP address (required for SSL certificate)
+echo "CERT_SERVER_IP=YOUR_SERVER_IP" > .env
 ```
 
-### 3. Edit Configuration
+Replace `YOUR_SERVER_IP` with your server's IP address (e.g., `192.168.1.213`).
 
-Edit `.env` file:
-
-```env
-# Your Nexus Dashboard details
-NEXUS_CLUSTER_URL=https://nexus-dashboard.example.com
-NEXUS_USERNAME=admin
-NEXUS_PASSWORD=your-password
-
-# Generate encryption key (run this command):
-# python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-ENCRYPTION_KEY=your-generated-key-here
-
-# Security (set to true to enable write operations)
-EDIT_MODE_ENABLED=false
-
-# Database
-DB_PASSWORD=change-this-password
-```
-
-### 4. Start Server
+### 3. Start Services
 
 ```bash
-# Option A: Using setup script (recommended)
-./scripts/setup.sh
-
-# Option B: Manual start
-docker-compose up -d
+docker compose up -d --build
 ```
 
-### 5. Verify Deployment
+Wait 1-2 minutes for all services to start. The first startup will:
+- Generate self-signed SSL certificates
+- Initialize the PostgreSQL database
+- Start all services
+
+### 4. Verify Deployment
 
 ```bash
-# Check logs
-docker-compose logs -f mcp-server
+# Check container status
+docker compose ps
 
-# Look for these messages:
-# ✓ "Loaded Manage API: ..."
-# ✓ "Registered X tools with MCP server"
-# ✓ "Nexus Dashboard MCP Server started"
+# View logs
+docker compose logs -f
+
+# Test API health
+curl -k https://localhost:8444/api/health
 ```
 
-### 6. Test Connection
+### 5. Initial Setup
 
-```bash
-# Check database
-docker-compose exec postgres psql -U mcp_user -d nexus_mcp -c "SELECT * FROM clusters;"
+1. Open browser: `https://YOUR_SERVER_IP:7443`
+2. Accept the self-signed certificate warning
+3. Create admin account:
+   - Username: `admin`
+   - Email: `admin@example.com`
+   - Password: `Admin123!`
 
-# Should show your cluster configuration
-```
+### 6. Add Your Cluster
+
+1. Navigate to **Clusters** page
+2. Click **Add New Cluster**
+3. Fill in details:
+   - Name: `my-cluster`
+   - URL: `https://nexus-dashboard.example.com`
+   - Username: `admin`
+   - Password: Your password
+   - SSL Verification: Off (for self-signed certs)
+4. Click **Test Connection**
+5. Click **Create Cluster**
 
 ## Using with Claude Desktop
 
-### macOS Configuration
+### Configuration
 
-1. Open: `~/Library/Application Support/Claude/claude_desktop_config.json`
+Add to your Claude Desktop config file:
 
-2. Add:
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+**Linux:** `~/.config/Claude/claude_desktop_config.json`
+
 ```json
 {
   "mcpServers": {
     "nexus-dashboard": {
-      "command": "docker",
+      "command": "npx",
       "args": [
-        "exec",
-        "-i",
-        "nexus-mcp-server",
-        "python",
-        "src/main.py"
+        "mcp-remote@latest",
+        "https://YOUR_SERVER_IP:8444/mcp/sse",
+        "--transport",
+        "sse-only"
       ]
     }
   }
 }
 ```
 
-3. Restart Claude Desktop
+Replace `YOUR_SERVER_IP` with your server's IP address.
 
-4. Look for MCP icon/indicator showing "nexus-dashboard" server connected
+### Restart and Test
+
+1. Restart Claude Desktop
+2. Look for MCP icon showing "nexus-dashboard" connected
+3. Try: "List all fabrics in my Nexus Dashboard"
 
 ## Example Queries
 
@@ -113,7 +116,9 @@ docker-compose exec postgres psql -U mcp_user -d nexus_mcp -c "SELECT * FROM clu
 "Show inventory of all devices"
 ```
 
-### Write Operations (Requires `EDIT_MODE_ENABLED=true`)
+### Write Operations (Requires Edit Mode)
+
+Enable edit mode in Web UI > Security, then:
 
 ```
 "Create a new fabric named 'Production-DC1'"
@@ -123,85 +128,100 @@ docker-compose exec postgres psql -U mcp_user -d nexus_mcp -c "SELECT * FROM clu
 "Delete the fabric 'Old-Test'"
 ```
 
+## Access Points
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Web UI | `https://YOUR_SERVER_IP:7443` | Management dashboard |
+| Web API | `https://YOUR_SERVER_IP:8444` | REST API |
+| API Docs | `https://YOUR_SERVER_IP:8444/docs` | Swagger UI |
+| MCP SSE | `https://YOUR_SERVER_IP:8444/mcp/sse` | Claude endpoint |
+| PostgreSQL | `localhost:15432` | Database |
+
 ## Troubleshooting
 
 ### Container Won't Start
 
 ```bash
 # Check status
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs mcp-server
+docker compose logs web-api
+docker compose logs web-ui
 
-# Common fixes:
-docker-compose down
-docker-compose up -d --build
+# Restart
+docker compose down && docker compose up -d
+```
+
+### Certificate Issues
+
+```bash
+# Regenerate certificates
+docker volume rm nexus-mcp-certs
+docker compose up -d
 ```
 
 ### Authentication Failures
 
 ```bash
-# Test credentials manually
-curl -k -X POST $NEXUS_CLUSTER_URL/login \
+# Test Nexus Dashboard connection manually
+curl -k -X POST https://nexus-dashboard.example.com/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"yourpass"}'
-
-# If using self-signed certs, ensure:
-NEXUS_VERIFY_SSL=false
 ```
 
 ### Database Issues
 
 ```bash
-# Reinitialize database
-docker-compose down -v
-docker-compose up -d
+# Connect to database
+docker compose exec postgres psql -U mcp_user -d nexus_mcp
+
+# Full reset (WARNING: deletes all data!)
+docker compose down -v
+docker compose up -d --build
 ```
 
-## Next Steps
+## Common Commands
 
-1. Read full documentation: `docs/README.md`
-2. Explore available tools in Claude Desktop
-3. Try read-only queries first
-4. Enable edit mode when you need write operations
-5. Monitor audit logs for operation history
+```bash
+# Start services
+docker compose up -d
 
-## Getting Help
+# Stop services
+docker compose down
 
-- Issues: https://github.com/beye91/nexus-dashboard-mcp/issues
-- Docs: `docs/` directory
-- Troubleshooting: `docs/DEPLOYMENT.md#troubleshooting`
+# View logs
+docker compose logs -f
+
+# Restart a service
+docker compose restart web-ui
+
+# Rebuild and restart
+docker compose up -d --build
+
+# Clean up unused images
+docker image prune -f
+```
 
 ## Security Reminders
 
 - Keep `EDIT_MODE_ENABLED=false` unless actively making changes
-- Use strong passwords for database and Nexus Dashboard
+- Change default admin password after first login
 - Protect your `.env` file (never commit to git)
-- Review audit logs regularly:
-  ```bash
-  docker-compose exec postgres psql -U mcp_user -d nexus_mcp -c "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 10;"
-  ```
+- Review audit logs regularly in Web UI
 
-## Status Check Commands
+## Next Steps
 
-```bash
-# All services
-docker-compose ps
+1. **Read documentation**: Check `docs/DEPLOYMENT.md` for production setup
+2. **Configure users**: Add team members with roles in Web UI
+3. **Explore APIs**: Use Claude to discover available operations
+4. **Monitor**: Review audit logs for operation history
 
-# Server logs
-docker-compose logs -f mcp-server
+## Getting Help
 
-# Database connection
-docker-compose exec postgres pg_isready
+- Issues: https://github.com/beye91/nexus-dashboard-mcp/issues
+- Documentation: `docs/` directory
+- Troubleshooting: `docs/DEPLOYMENT.md#troubleshooting`
 
-# Recent operations
-docker-compose exec postgres psql -U mcp_user -d nexus_mcp -c \
-  "SELECT operation_id, http_method, response_status, timestamp FROM audit_log ORDER BY timestamp DESC LIMIT 5;"
-
-# Statistics
-docker-compose exec postgres psql -U mcp_user -d nexus_mcp -c \
-  "SELECT http_method, COUNT(*) as count FROM audit_log GROUP BY http_method;"
-```
-
-Happy automating! 🚀
+Happy automating!

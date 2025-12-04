@@ -1,17 +1,59 @@
 # Claude Desktop Integration Guide
 
+## Overview
+
+This guide explains how to connect Claude Desktop to the Nexus Dashboard MCP Server, enabling Claude to interact with your Cisco Nexus Dashboard infrastructure.
+
+## Prerequisites
+
+- Nexus Dashboard MCP Server deployed and running
+- Claude Desktop installed
+- For remote connections: Node.js 18+ installed locally
+
 ## Quick Setup
 
-Your Nexus Dashboard MCP Server has been configured in Claude Desktop!
+### Remote Connection (Recommended)
 
-### ✅ Configuration Added
+For accessing the MCP server running on a remote host:
 
-The MCP server has been added to:
+**Step 1:** Locate your Claude Desktop configuration file:
+
+| OS | Path |
+|----|------|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` |
+
+**Step 2:** Add the MCP server configuration:
+
+```json
+{
+  "mcpServers": {
+    "nexus-dashboard": {
+      "command": "npx",
+      "args": [
+        "mcp-remote@latest",
+        "https://YOUR_SERVER_IP:8444/mcp/sse",
+        "--transport",
+        "sse-only"
+      ]
+    }
+  }
+}
 ```
-~/Library/Application Support/Claude/claude_desktop_config.json
-```
 
-**Configuration:**
+Replace `YOUR_SERVER_IP` with your server's IP address (e.g., `192.168.1.213`).
+
+**Step 3:** Restart Claude Desktop
+
+- macOS: Cmd+Q to quit, then relaunch
+- Windows: Close and reopen the application
+- Linux: Close and reopen the application
+
+### Local Connection
+
+For Claude Desktop running on the same machine as Docker:
+
 ```json
 {
   "mcpServers": {
@@ -29,127 +71,198 @@ The MCP server has been added to:
 }
 ```
 
-### 🔄 Next Steps
+## Handling Self-Signed Certificates
 
-1. **Restart Claude Desktop**
-   - Quit Claude Desktop completely (Cmd+Q)
-   - Relaunch Claude Desktop
+Since the MCP server uses self-signed certificates, you may encounter SSL/TLS errors.
 
-2. **Verify Connection**
-   - Look for the MCP server indicator (hammer icon)
-   - You should see "nexus-dashboard" in the available servers
+### Option 1: Accept Self-Signed Certificates (Development)
 
-3. **Test with a Query**
-   Try asking Claude:
+Set the environment variable before running Claude Desktop:
+
+**macOS/Linux:**
+```bash
+export NODE_TLS_REJECT_UNAUTHORIZED=0
+open -a "Claude"
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:NODE_TLS_REJECT_UNAUTHORIZED=0
+& "C:\Path\To\Claude.exe"
+```
+
+### Option 2: Add Certificate to Trust Store (Production)
+
+1. Download the server certificate:
+   ```bash
+   openssl s_client -connect YOUR_SERVER_IP:8444 -showcerts </dev/null 2>/dev/null | \
+     openssl x509 -outform PEM > nexus-mcp.crt
    ```
-   "List all fabrics in my Nexus Dashboard"
 
-   "Show me recent anomalies from the Nexus Dashboard"
+2. Add to your system's trust store:
+   - **macOS:** Double-click the .crt file and add to Keychain Access
+   - **Windows:** Right-click > Install Certificate
+   - **Linux:** Copy to `/usr/local/share/ca-certificates/` and run `update-ca-certificates`
 
-   "Get the status of fabric connections"
-   ```
+## Verifying the Connection
 
-### 🎯 Available Operations
+After restarting Claude Desktop:
 
-**Read Operations (Always Available):**
+1. Look for the MCP server indicator (hammer icon) in Claude Desktop
+2. You should see "nexus-dashboard" listed as an available server
+3. The indicator should show a green status
+
+### Test Query
+
+Try asking Claude:
+
+```
+"List all fabrics in my Nexus Dashboard"
+```
+
+or
+
+```
+"Show me the health status of my clusters"
+```
+
+## Available Operations
+
+### Read Operations (Always Available)
+
 - Get fabrics, templates, policies
 - List anomalies and advisories
 - Query inventory and topology
 - View configurations and status
+- Get health metrics
 
-**Write Operations (Requires Edit Mode):**
+### Write Operations (Requires Edit Mode)
+
+Write operations are disabled by default. To enable:
+
+1. Go to Web UI: `https://YOUR_SERVER_IP:7443`
+2. Navigate to **Security** page
+3. Enable **Edit Mode**
+4. Optionally whitelist specific operations
+
+Once enabled, you can:
 - Create/update/delete fabrics
 - Manage templates and policies
 - Configure devices
 - Deploy configurations
 
-To enable write operations:
+## Secure Access with API Token
+
+For additional security, you can require an API token:
+
+**Step 1:** Set the token in your deployment's `.env` file:
+
+```env
+MCP_API_TOKEN=your-secure-token-here
+```
+
+**Step 2:** Restart the services:
+
 ```bash
-cd /Users/cbeye/AI/nexus_dashboard_mcp
-echo "EDIT_MODE_ENABLED=true" >> .env
-docker-compose restart mcp-server
+docker compose down
+docker compose up -d
 ```
 
-### 🐛 Troubleshooting
+**Step 3:** Update Claude Desktop configuration:
 
-**Server Not Showing Up:**
-1. Check Docker containers are running:
+```json
+{
+  "mcpServers": {
+    "nexus-dashboard": {
+      "command": "npx",
+      "args": [
+        "mcp-remote@latest",
+        "https://YOUR_SERVER_IP:8444/mcp/sse",
+        "--transport",
+        "sse-only",
+        "--header",
+        "Authorization: Bearer your-secure-token-here"
+      ]
+    }
+  }
+}
+```
+
+## Troubleshooting
+
+### Server Not Showing Up
+
+1. **Check Docker containers are running:**
    ```bash
-   docker-compose ps
+   docker compose ps
    ```
 
-2. Check server logs:
+2. **Check server logs:**
    ```bash
-   docker-compose logs -f mcp-server
+   docker compose logs -f mcp-server
    ```
 
-3. Verify Claude Desktop config syntax:
+3. **Verify Claude Desktop config syntax:**
    ```bash
-   cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | jq .
+   cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | python -m json.tool
    ```
 
-**Permission Errors:**
-- Check edit mode setting in `.env`
-- Review audit logs: `docker-compose exec postgres psql -U mcp_user -d nexus_mcp`
+4. **Test the SSE endpoint:**
+   ```bash
+   curl -k https://YOUR_SERVER_IP:8444/mcp/sse
+   ```
 
-**Connection Errors:**
-- Verify Nexus Dashboard cluster is accessible: `curl -k https://nexus-dashboard.example.com`
-- Check credentials in database
+### Permission Errors
 
-### 📊 Monitoring
+- Check edit mode setting in Web UI
+- Verify your user has appropriate role assignments
+- Review audit logs: `https://YOUR_SERVER_IP:7443/audit`
 
-**Server Status:**
+### Connection Errors
+
+1. **Test network connectivity:**
+   ```bash
+   curl -k https://YOUR_SERVER_IP:8444/api/health
+   ```
+
+2. **Check firewall rules:**
+   - Port 8444 must be accessible
+
+3. **Verify SSL certificate:**
+   ```bash
+   openssl s_client -connect YOUR_SERVER_IP:8444 -servername YOUR_SERVER_IP
+   ```
+
+### SSL/Certificate Errors
+
+If you see "self-signed certificate" or "unable to verify" errors:
+
+1. Use `NODE_TLS_REJECT_UNAUTHORIZED=0` for development
+2. Add the certificate to your system trust store for production
+3. Or use proper CA-signed certificates
+
+## Monitoring Usage
+
+### View Real-Time Logs
+
 ```bash
-# View real-time logs
-docker-compose logs -f mcp-server
-
-# Check container health
-docker-compose ps
-
-# View audit logs
-docker-compose exec postgres psql -U mcp_user -d nexus_mcp -c "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 10;"
+docker compose logs -f mcp-server
 ```
 
-**Audit Queries:**
-```sql
--- Recent operations
-SELECT operation_id, http_method, response_status, timestamp
-FROM audit_log
-ORDER BY timestamp DESC
-LIMIT 20;
+### Audit Log Access
 
--- Success rate
-SELECT
-  COUNT(*) FILTER (WHERE response_status BETWEEN 200 AND 299) as successful,
-  COUNT(*) FILTER (WHERE response_status >= 400 OR error_message IS NOT NULL) as failed,
-  COUNT(*) as total
-FROM audit_log;
+All MCP operations are logged. View them at:
+- Web UI: `https://YOUR_SERVER_IP:7443/audit`
+- Database:
+  ```bash
+  docker compose exec postgres psql -U mcp_user -d nexus_mcp -c \
+    "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 20;"
+  ```
 
--- Operations by type
-SELECT http_method, COUNT(*)
-FROM audit_log
-GROUP BY http_method;
-```
+## Example Queries
 
-### 🔐 Security Notes
+### Read-Only Examples
 
-**Current Mode:** Read-Only
-- GET requests: ✅ Allowed
-- POST/PUT/DELETE: ❌ Blocked
-
-**To Enable Write Mode:**
-1. Edit `.env`: `EDIT_MODE_ENABLED=true`
-2. Restart: `docker-compose restart mcp-server`
-3. Verify in logs: Should show "Edit mode: ENABLED"
-
-**Credentials:**
-- Stored encrypted in PostgreSQL
-- Encryption key in `.env` (not committed to git)
-- Never logged in plaintext
-
-### 📚 Example Queries
-
-**Read-Only (Current Mode):**
 ```
 "Show me all fabrics configured in Nexus Dashboard"
 
@@ -160,68 +273,24 @@ GROUP BY http_method;
 "Get the configuration of fabric 'Production-DC1'"
 
 "Show me the topology of fabric 'Test-Fabric'"
+
+"What is the health status of my clusters?"
 ```
 
-**Write Mode (After Enabling):**
+### Write Mode Examples (After Enabling)
+
 ```
 "Create a new fabric named 'Development-Fabric'"
 
 "Update the description of fabric 'Test-Fabric' to 'QA Environment'"
 
 "Deploy the template 'Base-Config' to fabric 'Production-DC1'"
-
-"Delete the fabric 'Old-Test-Fabric'"
 ```
 
-### 🎓 Tips
+## Best Practices
 
-1. **Be Specific**: Include fabric names, device IDs when querying
-2. **Check Audit**: Review audit_log table to see what operations were performed
-3. **Start Read-Only**: Test queries before enabling write mode
-4. **Monitor Logs**: Keep `docker-compose logs -f` running during testing
-
-### 🔄 Restarting Services
-
-```bash
-# Restart everything
-docker-compose restart
-
-# Restart just MCP server
-docker-compose restart mcp-server
-
-# View startup logs
-docker-compose logs -f mcp-server
-
-# Stop everything
-docker-compose down
-
-# Start fresh
-docker-compose up -d
-```
-
-### 📞 Need Help?
-
-**Check Logs:**
-```bash
-docker-compose logs mcp-server | grep ERROR
-docker-compose logs mcp-server | grep -i "authentication"
-```
-
-**Database Access:**
-```bash
-docker-compose exec postgres psql -U mcp_user -d nexus_mcp
-```
-
-**Reset and Retry:**
-```bash
-docker-compose down
-docker-compose up -d
-docker-compose logs -f mcp-server
-```
-
----
-
-**Status**: Configured and Ready ✅
-**Cluster**: https://nexus-dashboard.example.com
-**Mode**: Read-Only (Edit mode available on demand)
-**Tools**: 202 Nexus Dashboard operations
+1. **Start Read-Only:** Test queries before enabling write mode
+2. **Use Specific Queries:** Include fabric names and device IDs
+3. **Monitor Logs:** Keep `docker compose logs -f` running during testing
+4. **Review Audit:** Check audit logs after operations
+5. **Limit Access:** Use API tokens in shared environments

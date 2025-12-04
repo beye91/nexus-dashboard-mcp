@@ -4,11 +4,12 @@ import json
 import logging
 from pathlib import Path
 
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, text
 
 from src.config.database import get_db
 from src.models.security import SecurityConfig
 from src.models.api_endpoint import APIEndpoint
+from src.models.role import Role, RoleOperation
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,74 @@ async def sync_api_endpoints():
     logger.info(f"Total API endpoints synced to database: {total_loaded}")
 
 
+async def sync_role_operations():
+    """Sync default role operations for system roles.
+
+    This ensures that system roles (Administrator, Operator, Viewer) have
+    appropriate operations assigned after api_endpoints are loaded.
+    """
+    db = get_db()
+
+    async with db.session() as session:
+        # Get system roles
+        result = await session.execute(
+            select(Role).where(Role.is_system_role == True)
+        )
+        system_roles = {role.name: role.id for role in result.scalars().all()}
+
+        if not system_roles:
+            logger.warning("No system roles found - skipping role operations sync")
+            return
+
+        # Check if Administrator role has any operations
+        admin_role_id = system_roles.get("Administrator")
+        if admin_role_id:
+            existing = await session.execute(
+                select(RoleOperation).where(RoleOperation.role_id == admin_role_id).limit(1)
+            )
+            if existing.scalar_one_or_none():
+                logger.info("Role operations already populated - skipping sync")
+                return
+
+        # Populate operations for each system role
+        for role_name, role_id in system_roles.items():
+            if role_name == "Administrator":
+                # Admin gets all operations
+                await session.execute(text("""
+                    INSERT INTO role_operations (role_id, operation_name)
+                    SELECT :role_id, api_name || '_' || operation_id
+                    FROM api_endpoints
+                    ON CONFLICT (role_id, operation_name) DO NOTHING
+                """), {"role_id": role_id})
+                logger.info(f"Assigned all operations to Administrator role")
+
+            elif role_name == "Operator":
+                # Operator gets GET operations only
+                await session.execute(text("""
+                    INSERT INTO role_operations (role_id, operation_name)
+                    SELECT :role_id, api_name || '_' || operation_id
+                    FROM api_endpoints
+                    WHERE http_method = 'GET'
+                    ON CONFLICT (role_id, operation_name) DO NOTHING
+                """), {"role_id": role_id})
+                logger.info(f"Assigned GET operations to Operator role")
+
+            elif role_name == "Viewer":
+                # Viewer gets list/get operations only
+                await session.execute(text("""
+                    INSERT INTO role_operations (role_id, operation_name)
+                    SELECT :role_id, api_name || '_' || operation_id
+                    FROM api_endpoints
+                    WHERE http_method = 'GET'
+                      AND (operation_id LIKE 'list%' OR operation_id LIKE 'get%')
+                    ON CONFLICT (role_id, operation_name) DO NOTHING
+                """), {"role_id": role_id})
+                logger.info(f"Assigned list/get operations to Viewer role")
+
+        await session.commit()
+        logger.info("Role operations sync completed")
+
+
 async def initialize_database_defaults():
     """Initialize all default database records.
 
@@ -148,5 +217,8 @@ async def initialize_database_defaults():
 
     # Sync API endpoints from OpenAPI specs
     await sync_api_endpoints()
+
+    # Sync role operations for system roles
+    await sync_role_operations()
 
     logger.info("Database initialization completed")

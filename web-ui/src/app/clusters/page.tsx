@@ -105,16 +105,17 @@ export default function ClustersPage() {
   async function handleTestConnection(cluster: Cluster) {
     setTestingCluster(cluster.name);
     try {
-      await api.clusters.test({
-        url: cluster.url,
-        username: cluster.username,
-        password: '',
-        verify_ssl: cluster.verify_ssl,
-      });
-      alert(`Connection to "${cluster.name}" successful!`);
+      const response = await api.clusters.testByName(cluster.name);
+      const result = response.data;
+      if (result.status === 'success') {
+        alert(`Connection to "${cluster.name}" successful!`);
+      } else {
+        alert(`Connection test failed: ${result.message}`);
+      }
     } catch (err: any) {
       console.error('Connection test failed:', err);
-      alert(err.response?.data?.detail || 'Connection test failed');
+      const errorMsg = err.response?.data?.message || err.response?.data?.detail || 'Connection test failed';
+      alert(errorMsg);
     } finally {
       setTestingCluster(null);
     }
