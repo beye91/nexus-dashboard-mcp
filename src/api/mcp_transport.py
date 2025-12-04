@@ -11,7 +11,7 @@ Usage:
 Authentication:
   - Per-user API tokens: Each user gets a unique API token for Claude Desktop
   - Legacy MCP_API_TOKEN: Still supported for backward compatibility (all permissions)
-  - Users without API token = no user context (uses global settings)
+  - Users without API token = access denied (no tools available)
 
 Authorization:
   - Operation-based access control: Users can only execute operations assigned via roles
@@ -133,7 +133,8 @@ async def validate_token(authorization: Optional[str]) -> AuthResult:
     This function supports:
     1. Per-user API tokens (looked up from users table)
     2. Legacy MCP_API_TOKEN environment variable (all permissions)
-    3. No token configured (development mode, all permissions)
+
+    Authentication is REQUIRED - no token = no access.
 
     Args:
         authorization: Authorization header value
@@ -151,11 +152,9 @@ async def validate_token(authorization: Optional[str]) -> AuthResult:
         else:
             token = authorization
 
-    # Case 1: No token provided
+    # Case 1: No token provided - always deny access
     if not token:
-        # If no MCP_API_TOKEN configured, allow unauthenticated access
-        if not expected_token:
-            return AuthResult(is_valid=True, has_edit_mode=True)
+        logger.warning("MCP access denied: No API token provided")
         return AuthResult(is_valid=False)
 
     # Case 2: Check legacy MCP_API_TOKEN first
@@ -185,12 +184,8 @@ async def validate_token(authorization: Optional[str]) -> AuthResult:
             has_edit_mode=has_edit,
         )
 
-    # Case 4: Invalid token
-    # If no MCP_API_TOKEN is set and user lookup failed, deny access
-    if not expected_token:
-        # No legacy token required but user token invalid - deny
-        return AuthResult(is_valid=False)
-
+    # Case 4: Invalid token - deny access
+    logger.warning("MCP access denied: Invalid API token")
     return AuthResult(is_valid=False)
 
 
