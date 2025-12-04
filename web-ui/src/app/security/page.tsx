@@ -807,11 +807,15 @@ export default function SecurityPage() {
   "mcpServers": {
     "nexus-dashboard": {
       "command": "npx",
-      "args": ["-y", "mcp-remote",
-        "http://${typeof window !== 'undefined' ? window.location.hostname : '<host>'}:8002/mcp/sse"],
-      "env": {
-        "API_TOKEN": "${generatedToken}"
-      }
+      "args": [
+        "mcp-remote@latest",
+        "http://${typeof window !== 'undefined' ? window.location.hostname : 'YOUR_SERVER_IP'}:8002/mcp/sse",
+        "--allow-http",
+        "--transport",
+        "sse-only",
+        "--header",
+        "Authorization: Bearer ${generatedToken}"
+      ]
     }
   }
 }`}
