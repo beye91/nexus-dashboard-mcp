@@ -33,9 +33,17 @@ app = FastAPI(
 )
 
 # CORS configuration
+# Note: Cannot use wildcard "*" with allow_credentials=True per CORS spec
+# Browser will reject requests if credentials are allowed with wildcard origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:7001", "http://127.0.0.1:7001", "*"],
+    allow_origins=[
+        "http://localhost:7001",
+        "http://127.0.0.1:7001",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://web-ui:3000",  # Docker internal network
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

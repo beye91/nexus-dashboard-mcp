@@ -21,11 +21,8 @@ export async function POST(request: NextRequest) {
     // Create the response
     const response = NextResponse.json(data, { status: backendResponse.status });
 
-    // Forward Set-Cookie headers from backend (cookie deletion)
-    const setCookieHeader = backendResponse.headers.get('set-cookie');
-    if (setCookieHeader) {
-      response.headers.set('Set-Cookie', setCookieHeader);
-    }
+    // Delete the session cookie
+    response.cookies.delete('nexus_session');
 
     return response;
   } catch (error) {

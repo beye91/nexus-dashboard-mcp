@@ -20,10 +20,19 @@ export async function POST(request: NextRequest) {
     // Create the response
     const response = NextResponse.json(data, { status: backendResponse.status });
 
-    // Forward Set-Cookie headers from backend
-    const setCookieHeader = backendResponse.headers.get('set-cookie');
-    if (setCookieHeader) {
-      response.headers.set('Set-Cookie', setCookieHeader);
+    // If setup successful, set the session cookie ourselves
+    // The backend returns the token in the response body, so we can set it here
+    // This ensures the cookie is set correctly for the browser's domain
+    if (backendResponse.ok && data.token) {
+      response.cookies.set({
+        name: 'nexus_session',
+        value: data.token,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 24 * 60 * 60, // 24 hours
+      });
     }
 
     return response;
