@@ -1,5 +1,6 @@
 // Cluster types
 export interface Cluster {
+  id?: number;
   name: string;
   url: string;
   username: string;
@@ -104,6 +105,7 @@ export interface User {
   created_at: string;
   updated_at: string;
   roles: Role[];
+  clusters: { id: number; name: string }[];
   has_edit_mode: boolean;
   api_token?: string;  // Only returned for current user
 }
@@ -210,4 +212,118 @@ export interface SetRoleOperationsRequest {
 
 export interface RegenerateTokenResponse {
   api_token: string;
+}
+
+// ==================== LDAP Types ====================
+
+export interface LDAPConfig {
+  id: number;
+  name: string;
+  is_enabled: boolean;
+  is_primary: boolean;
+  server_url: string;
+  base_dn: string;
+  bind_dn?: string;
+  use_ssl: boolean;
+  use_starttls: boolean;
+  verify_ssl: boolean;
+  has_ca_certificate: boolean;
+  user_search_base?: string;
+  user_search_filter: string;
+  username_attribute: string;
+  email_attribute: string;
+  display_name_attribute: string;
+  member_of_attribute: string;
+  group_search_base?: string;
+  group_search_filter: string;
+  group_name_attribute: string;
+  group_member_attribute: string;
+  sync_interval_minutes: number;
+  auto_create_users: boolean;
+  auto_sync_groups: boolean;
+  default_role_id?: number;
+  last_sync_at?: string;
+  last_sync_status?: 'success' | 'partial' | 'failed';
+  last_sync_message?: string;
+  last_sync_users_created: number;
+  last_sync_users_updated: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LDAPConfigCreate {
+  name: string;
+  server_url: string;
+  base_dn: string;
+  bind_dn?: string;
+  bind_password?: string;
+  use_ssl?: boolean;
+  use_starttls?: boolean;
+  verify_ssl?: boolean;
+  user_search_base?: string;
+  user_search_filter?: string;
+  username_attribute?: string;
+  email_attribute?: string;
+  display_name_attribute?: string;
+  member_of_attribute?: string;
+  group_search_base?: string;
+  group_search_filter?: string;
+  group_name_attribute?: string;
+  group_member_attribute?: string;
+  sync_interval_minutes?: number;
+  auto_create_users?: boolean;
+  auto_sync_groups?: boolean;
+  default_role_id?: number;
+}
+
+export interface LDAPGroup {
+  dn: string;
+  name: string;
+  description?: string;
+}
+
+export interface LDAPRoleMapping {
+  id: number;
+  ldap_config_id: number;
+  ldap_group_dn: string;
+  ldap_group_name: string;
+  role_id: number;
+  role_name?: string;
+  created_at: string;
+}
+
+export interface LDAPClusterMapping {
+  id: number;
+  ldap_config_id: number;
+  ldap_group_dn: string;
+  ldap_group_name: string;
+  cluster_id: number;
+  cluster_name?: string;
+  created_at: string;
+}
+
+export interface LDAPTestResult {
+  success: boolean;
+  error?: string;
+  error_type?: string;
+  server_info?: {
+    vendor: string;
+    version: string;
+    naming_contexts: string[];
+  };
+  users_found?: number;
+  message?: string;
+}
+
+export interface LDAPSyncResult {
+  success: boolean;
+  created?: number;
+  updated?: number;
+  errors?: string[];
+  total_errors?: number;
+  error?: string;
+}
+
+export interface AssignClustersRequest {
+  cluster_ids: number[];
 }

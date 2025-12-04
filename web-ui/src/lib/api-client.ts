@@ -2,6 +2,7 @@ import axios from 'axios';
 import type {
   User,
   Role,
+  Cluster,
   LoginRequest,
   LoginResponse,
   AuthMeResponse,
@@ -11,11 +12,19 @@ import type {
   CreateRoleRequest,
   UpdateRoleRequest,
   AssignRolesRequest,
+  AssignClustersRequest,
   SetRoleOperationsRequest,
   OperationsListResponse,
   OperationsGrouped,
   ApiNamesResponse,
   RegenerateTokenResponse,
+  LDAPConfig,
+  LDAPConfigCreate,
+  LDAPGroup,
+  LDAPRoleMapping,
+  LDAPClusterMapping,
+  LDAPTestResult,
+  LDAPSyncResult,
 } from '@/types';
 
 // Use relative URLs - Next.js rewrites will proxy to the backend
@@ -127,6 +136,10 @@ export const api = {
       apiClient.delete(`/api/users/${id}`),
     assignRoles: (id: number, data: AssignRolesRequest) =>
       apiClient.put<User>(`/api/users/${id}/roles`, data),
+    assignClusters: (id: number, data: AssignClustersRequest) =>
+      apiClient.put<User>(`/api/users/${id}/clusters`, data),
+    getClusters: (id: number) =>
+      apiClient.get<Cluster[]>(`/api/users/${id}/clusters`),
     regenerateToken: (id: number) =>
       apiClient.post<RegenerateTokenResponse>(`/api/users/${id}/regenerate-token`),
   },
@@ -157,5 +170,41 @@ export const api = {
       apiClient.get<ApiNamesResponse>('/api/operations/api-names'),
     count: () =>
       apiClient.get<{ total: number }>('/api/operations/count'),
+  },
+
+  // LDAP
+  ldap: {
+    listConfigs: () =>
+      apiClient.get<LDAPConfig[]>('/api/ldap/configs'),
+    getConfig: (id: number) =>
+      apiClient.get<LDAPConfig>(`/api/ldap/configs/${id}`),
+    createConfig: (data: LDAPConfigCreate) =>
+      apiClient.post<LDAPConfig>('/api/ldap/configs', data),
+    updateConfig: (id: number, data: Partial<LDAPConfigCreate>) =>
+      apiClient.put<LDAPConfig>(`/api/ldap/configs/${id}`, data),
+    deleteConfig: (id: number) =>
+      apiClient.delete(`/api/ldap/configs/${id}`),
+    testConnection: (id: number) =>
+      apiClient.post<LDAPTestResult>(`/api/ldap/configs/${id}/test`),
+    syncUsers: (id: number) =>
+      apiClient.post<LDAPSyncResult>(`/api/ldap/configs/${id}/sync`),
+    discoverGroups: (id: number) =>
+      apiClient.get<LDAPGroup[]>(`/api/ldap/configs/${id}/groups`),
+
+    // Role mappings
+    listRoleMappings: (configId: number) =>
+      apiClient.get<LDAPRoleMapping[]>(`/api/ldap/configs/${configId}/role-mappings`),
+    createRoleMapping: (configId: number, data: { ldap_group_dn: string; ldap_group_name: string; role_id: number }) =>
+      apiClient.post<LDAPRoleMapping>(`/api/ldap/configs/${configId}/role-mappings`, data),
+    deleteRoleMapping: (configId: number, mappingId: number) =>
+      apiClient.delete(`/api/ldap/configs/${configId}/role-mappings/${mappingId}`),
+
+    // Cluster mappings
+    listClusterMappings: (configId: number) =>
+      apiClient.get<LDAPClusterMapping[]>(`/api/ldap/configs/${configId}/cluster-mappings`),
+    createClusterMapping: (configId: number, data: { ldap_group_dn: string; ldap_group_name: string; cluster_id: number }) =>
+      apiClient.post<LDAPClusterMapping>(`/api/ldap/configs/${configId}/cluster-mappings`, data),
+    deleteClusterMapping: (configId: number, mappingId: number) =>
+      apiClient.delete(`/api/ldap/configs/${configId}/cluster-mappings/${mappingId}`),
   },
 };

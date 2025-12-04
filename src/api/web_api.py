@@ -22,6 +22,7 @@ from src.models.role import Role
 from src.services.credential_manager import CredentialManager
 from src.services.user_service import UserService
 from src.services.role_service import RoleService
+from src.services.ldap_service import LDAPService
 from src.utils.encryption import decrypt_password
 from src.api.mcp_transport import router as mcp_router
 
@@ -249,10 +250,179 @@ class AssignRolesRequest(BaseModel):
     role_ids: List[int]
 
 
+# ==================== User Cluster Pydantic Models ====================
+
+class AssignClustersRequest(BaseModel):
+    """Request model for assigning clusters to a user."""
+    cluster_ids: List[int]
+
+
+class UserClusterResponse(BaseModel):
+    """Response model for user cluster assignment."""
+    id: int
+    name: str
+    url: str
+    created_at: str
+
+
+# ==================== LDAP Configuration Pydantic Models ====================
+
+class LDAPConfigCreate(BaseModel):
+    """Request model for creating an LDAP configuration."""
+    name: str = Field(..., min_length=1, max_length=255)
+    server_url: str = Field(..., min_length=1)
+    base_dn: str = Field(..., min_length=1)
+    bind_dn: Optional[str] = None
+    bind_password: Optional[str] = None
+    use_ssl: bool = False
+    use_starttls: bool = False
+    verify_ssl: bool = True
+    user_search_base: Optional[str] = None
+    user_search_filter: str = "(objectClass=person)"
+    username_attribute: str = "sAMAccountName"
+    email_attribute: str = "mail"
+    display_name_attribute: str = "displayName"
+    member_of_attribute: str = "memberOf"
+    group_search_base: Optional[str] = None
+    group_search_filter: str = "(objectClass=group)"
+    group_name_attribute: str = "cn"
+    auto_create_users: bool = True
+    auto_sync_groups: bool = True
+    sync_interval_minutes: int = 60
+    default_role_id: Optional[int] = None
+    is_enabled: bool = False
+    is_primary: bool = False
+
+
+class LDAPConfigUpdate(BaseModel):
+    """Request model for updating an LDAP configuration."""
+    server_url: Optional[str] = None
+    base_dn: Optional[str] = None
+    bind_dn: Optional[str] = None
+    bind_password: Optional[str] = None
+    use_ssl: Optional[bool] = None
+    use_starttls: Optional[bool] = None
+    verify_ssl: Optional[bool] = None
+    user_search_base: Optional[str] = None
+    user_search_filter: Optional[str] = None
+    username_attribute: Optional[str] = None
+    email_attribute: Optional[str] = None
+    display_name_attribute: Optional[str] = None
+    member_of_attribute: Optional[str] = None
+    group_search_base: Optional[str] = None
+    group_search_filter: Optional[str] = None
+    group_name_attribute: Optional[str] = None
+    auto_create_users: Optional[bool] = None
+    auto_sync_groups: Optional[bool] = None
+    sync_interval_minutes: Optional[int] = None
+    default_role_id: Optional[int] = None
+    is_enabled: Optional[bool] = None
+    is_primary: Optional[bool] = None
+
+
+class LDAPConfigResponse(BaseModel):
+    """Response model for LDAP configuration."""
+    id: int
+    name: str
+    is_enabled: bool
+    is_primary: bool
+    server_url: str
+    base_dn: str
+    bind_dn: Optional[str]
+    use_ssl: bool
+    use_starttls: bool
+    verify_ssl: bool
+    has_ca_certificate: bool
+    user_search_base: Optional[str]
+    user_search_filter: str
+    username_attribute: str
+    email_attribute: str
+    display_name_attribute: str
+    member_of_attribute: str
+    group_search_base: Optional[str]
+    group_search_filter: str
+    group_name_attribute: str
+    sync_interval_minutes: int
+    auto_create_users: bool
+    auto_sync_groups: bool
+    default_role_id: Optional[int]
+    last_sync_at: Optional[str]
+    last_sync_status: Optional[str]
+    last_sync_message: Optional[str]
+    last_sync_users_created: int
+    last_sync_users_updated: int
+    created_at: str
+    updated_at: str
+
+
+class LDAPGroupResponse(BaseModel):
+    """Response model for LDAP group discovery."""
+    dn: str
+    name: str
+    description: Optional[str]
+
+
+class LDAPTestResponse(BaseModel):
+    """Response model for LDAP connection test."""
+    success: bool
+    server_info: Optional[dict] = None
+    users_found: Optional[int] = None
+    message: Optional[str] = None
+    error: Optional[str] = None
+    error_type: Optional[str] = None
+
+
+class LDAPSyncResponse(BaseModel):
+    """Response model for LDAP user sync."""
+    success: bool
+    created: Optional[int] = None
+    updated: Optional[int] = None
+    errors: Optional[List[str]] = None
+    total_errors: Optional[int] = None
+    error: Optional[str] = None
+
+
+class LDAPRoleMappingCreate(BaseModel):
+    """Request model for creating LDAP group to role mapping."""
+    ldap_group_dn: str = Field(..., min_length=1)
+    ldap_group_name: str = Field(..., min_length=1)
+    role_id: int
+
+
+class LDAPRoleMappingResponse(BaseModel):
+    """Response model for LDAP group to role mapping."""
+    id: int
+    ldap_config_id: int
+    ldap_group_dn: str
+    ldap_group_name: str
+    role_id: int
+    role_name: Optional[str]
+    created_at: str
+
+
+class LDAPClusterMappingCreate(BaseModel):
+    """Request model for creating LDAP group to cluster mapping."""
+    ldap_group_dn: str = Field(..., min_length=1)
+    ldap_group_name: str = Field(..., min_length=1)
+    cluster_id: int
+
+
+class LDAPClusterMappingResponse(BaseModel):
+    """Response model for LDAP group to cluster mapping."""
+    id: int
+    ldap_config_id: int
+    ldap_group_dn: str
+    ldap_group_name: str
+    cluster_id: int
+    cluster_name: Optional[str]
+    created_at: str
+
+
 # Initialize services
 credential_manager = CredentialManager()
 user_service = UserService()
 role_service = RoleService()
+ldap_service = LDAPService()
 settings = get_settings()
 db = get_db()
 
@@ -1412,6 +1582,304 @@ async def get_operations_count(
     """Get total count of available operations."""
     count = await role_service.count_operations()
     return {"total": count}
+
+
+# ==================== User Cluster Assignment Endpoints ====================
+
+@app.put("/api/users/{user_id}/clusters", response_model=List[UserClusterResponse])
+async def assign_user_clusters(
+    user_id: int,
+    clusters_data: AssignClustersRequest,
+    current_user: User = Depends(require_auth),
+):
+    """Assign clusters to a user.
+
+    Users can only modify their own clusters unless they are superuser.
+    """
+    # Check permissions: user can modify their own or superuser can modify anyone's
+    if current_user and not current_user.is_superuser and current_user.id != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Can only assign clusters to your own account"
+        )
+
+    # Assign clusters
+    user = await user_service.assign_clusters(user_id, clusters_data.cluster_ids)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get assigned clusters
+    clusters = await user_service.get_user_clusters(user_id)
+
+    return [
+        UserClusterResponse(
+            id=c.id,
+            name=c.name,
+            url=c.url,
+            created_at=c.created_at.isoformat(),
+        )
+        for c in clusters
+    ]
+
+
+@app.get("/api/users/{user_id}/clusters", response_model=List[UserClusterResponse])
+async def get_user_clusters(
+    user_id: int,
+    current_user: User = Depends(require_auth),
+):
+    """Get clusters assigned to a user.
+
+    Users can view their own clusters or superuser can view anyone's.
+    """
+    # Check permissions
+    if current_user and not current_user.is_superuser and current_user.id != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Can only view your own cluster assignments"
+        )
+
+    clusters = await user_service.get_user_clusters(user_id)
+
+    return [
+        UserClusterResponse(
+            id=c.id,
+            name=c.name,
+            url=c.url,
+            created_at=c.created_at.isoformat(),
+        )
+        for c in clusters
+    ]
+
+
+# ==================== LDAP Configuration Endpoints ====================
+
+@app.get("/api/ldap/configs", response_model=List[LDAPConfigResponse])
+async def list_ldap_configs(
+    _admin: User = Depends(require_superuser),
+):
+    """List all LDAP configurations (superuser only)."""
+    configs = await ldap_service.list_configs()
+
+    return [LDAPConfigResponse(**c.to_dict()) for c in configs]
+
+
+@app.post("/api/ldap/configs", response_model=LDAPConfigResponse, status_code=201)
+async def create_ldap_config(
+    config_data: LDAPConfigCreate,
+    _admin: User = Depends(require_superuser),
+):
+    """Create a new LDAP configuration (superuser only)."""
+    try:
+        config = await ldap_service.create_config(
+            name=config_data.name,
+            server_url=config_data.server_url,
+            base_dn=config_data.base_dn,
+            bind_dn=config_data.bind_dn,
+            bind_password=config_data.bind_password,
+            use_ssl=config_data.use_ssl,
+            use_starttls=config_data.use_starttls,
+            verify_ssl=config_data.verify_ssl,
+            user_search_base=config_data.user_search_base,
+            user_search_filter=config_data.user_search_filter,
+            username_attribute=config_data.username_attribute,
+            email_attribute=config_data.email_attribute,
+            display_name_attribute=config_data.display_name_attribute,
+            member_of_attribute=config_data.member_of_attribute,
+            group_search_base=config_data.group_search_base,
+            group_search_filter=config_data.group_search_filter,
+            group_name_attribute=config_data.group_name_attribute,
+            auto_create_users=config_data.auto_create_users,
+            auto_sync_groups=config_data.auto_sync_groups,
+            sync_interval_minutes=config_data.sync_interval_minutes,
+            default_role_id=config_data.default_role_id,
+            is_enabled=config_data.is_enabled,
+            is_primary=config_data.is_primary,
+        )
+
+        return LDAPConfigResponse(**config.to_dict())
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/ldap/configs/{config_id}", response_model=LDAPConfigResponse)
+async def get_ldap_config(
+    config_id: int,
+    _admin: User = Depends(require_superuser),
+):
+    """Get LDAP configuration by ID (superuser only)."""
+    config = await ldap_service.get_config(config_id)
+
+    if not config:
+        raise HTTPException(status_code=404, detail="LDAP configuration not found")
+
+    return LDAPConfigResponse(**config.to_dict())
+
+
+@app.put("/api/ldap/configs/{config_id}", response_model=LDAPConfigResponse)
+async def update_ldap_config(
+    config_id: int,
+    config_data: LDAPConfigUpdate,
+    _admin: User = Depends(require_superuser),
+):
+    """Update LDAP configuration (superuser only)."""
+    # Build update kwargs from provided fields
+    update_fields = {}
+    for field, value in config_data.dict(exclude_unset=True).items():
+        if field != "bind_password":
+            update_fields[field] = value
+
+    # Handle bind_password separately
+    bind_password = config_data.bind_password if hasattr(config_data, 'bind_password') else None
+
+    config = await ldap_service.update_config(
+        config_id,
+        bind_password=bind_password,
+        **update_fields
+    )
+
+    if not config:
+        raise HTTPException(status_code=404, detail="LDAP configuration not found")
+
+    return LDAPConfigResponse(**config.to_dict())
+
+
+@app.delete("/api/ldap/configs/{config_id}", status_code=204)
+async def delete_ldap_config(
+    config_id: int,
+    _admin: User = Depends(require_superuser),
+):
+    """Delete LDAP configuration (superuser only)."""
+    deleted = await ldap_service.delete_config(config_id)
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="LDAP configuration not found")
+
+    return None
+
+
+@app.post("/api/ldap/configs/{config_id}/test", response_model=LDAPTestResponse)
+async def test_ldap_connection(
+    config_id: int,
+    _admin: User = Depends(require_superuser),
+):
+    """Test LDAP connection and return diagnostic info (superuser only)."""
+    result = await ldap_service.test_connection(config_id)
+    return LDAPTestResponse(**result)
+
+
+@app.post("/api/ldap/configs/{config_id}/sync", response_model=LDAPSyncResponse)
+async def sync_ldap_users(
+    config_id: int,
+    _admin: User = Depends(require_superuser),
+):
+    """Sync users from LDAP to local database (superuser only)."""
+    result = await ldap_service.sync_users(config_id)
+    return LDAPSyncResponse(**result)
+
+
+@app.get("/api/ldap/configs/{config_id}/groups", response_model=List[LDAPGroupResponse])
+async def discover_ldap_groups(
+    config_id: int,
+    _admin: User = Depends(require_superuser),
+):
+    """Discover available LDAP groups (superuser only)."""
+    groups = await ldap_service.discover_groups(config_id)
+    return [LDAPGroupResponse(**g) for g in groups]
+
+
+# ==================== LDAP Group Mapping Endpoints ====================
+
+@app.get("/api/ldap/configs/{config_id}/role-mappings", response_model=List[LDAPRoleMappingResponse])
+async def list_ldap_role_mappings(
+    config_id: int,
+    _admin: User = Depends(require_superuser),
+):
+    """List LDAP group to role mappings (superuser only)."""
+    mappings = await ldap_service.get_role_mappings(config_id)
+
+    return [LDAPRoleMappingResponse(**m.to_dict()) for m in mappings]
+
+
+@app.post("/api/ldap/configs/{config_id}/role-mappings", response_model=LDAPRoleMappingResponse, status_code=201)
+async def create_ldap_role_mapping(
+    config_id: int,
+    mapping_data: LDAPRoleMappingCreate,
+    _admin: User = Depends(require_superuser),
+):
+    """Create LDAP group to role mapping (superuser only)."""
+    mapping = await ldap_service.add_role_mapping(
+        config_id=config_id,
+        ldap_group_dn=mapping_data.ldap_group_dn,
+        ldap_group_name=mapping_data.ldap_group_name,
+        role_id=mapping_data.role_id,
+    )
+
+    if not mapping:
+        raise HTTPException(status_code=400, detail="Failed to create role mapping")
+
+    return LDAPRoleMappingResponse(**mapping.to_dict())
+
+
+@app.delete("/api/ldap/configs/{config_id}/role-mappings/{mapping_id}", status_code=204)
+async def delete_ldap_role_mapping(
+    config_id: int,
+    mapping_id: int,
+    _admin: User = Depends(require_superuser),
+):
+    """Delete LDAP group to role mapping (superuser only)."""
+    deleted = await ldap_service.delete_role_mapping(mapping_id)
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Role mapping not found")
+
+    return None
+
+
+@app.get("/api/ldap/configs/{config_id}/cluster-mappings", response_model=List[LDAPClusterMappingResponse])
+async def list_ldap_cluster_mappings(
+    config_id: int,
+    _admin: User = Depends(require_superuser),
+):
+    """List LDAP group to cluster mappings (superuser only)."""
+    mappings = await ldap_service.get_cluster_mappings(config_id)
+
+    return [LDAPClusterMappingResponse(**m.to_dict()) for m in mappings]
+
+
+@app.post("/api/ldap/configs/{config_id}/cluster-mappings", response_model=LDAPClusterMappingResponse, status_code=201)
+async def create_ldap_cluster_mapping(
+    config_id: int,
+    mapping_data: LDAPClusterMappingCreate,
+    _admin: User = Depends(require_superuser),
+):
+    """Create LDAP group to cluster mapping (superuser only)."""
+    mapping = await ldap_service.add_cluster_mapping(
+        config_id=config_id,
+        ldap_group_dn=mapping_data.ldap_group_dn,
+        ldap_group_name=mapping_data.ldap_group_name,
+        cluster_id=mapping_data.cluster_id,
+    )
+
+    if not mapping:
+        raise HTTPException(status_code=400, detail="Failed to create cluster mapping")
+
+    return LDAPClusterMappingResponse(**mapping.to_dict())
+
+
+@app.delete("/api/ldap/configs/{config_id}/cluster-mappings/{mapping_id}", status_code=204)
+async def delete_ldap_cluster_mapping(
+    config_id: int,
+    mapping_id: int,
+    _admin: User = Depends(require_superuser),
+):
+    """Delete LDAP group to cluster mapping (superuser only)."""
+    deleted = await ldap_service.delete_cluster_mapping(mapping_id)
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Cluster mapping not found")
+
+    return None
 
 
 if __name__ == "__main__":

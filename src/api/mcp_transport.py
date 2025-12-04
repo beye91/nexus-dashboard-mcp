@@ -12,6 +12,12 @@ Authentication:
   - Per-user API tokens: Each user gets a unique API token for Claude Desktop
   - Legacy MCP_API_TOKEN: Still supported for backward compatibility (all permissions)
   - Users without API token = no user context (uses global settings)
+
+Authorization:
+  - Operation-based access control: Users can only execute operations assigned via roles
+  - Cluster-based access control: Users can only access clusters they are assigned to
+  - Superusers: Full access to all operations and all clusters
+  - Legacy token holders: Full access to all operations and all clusters
 """
 
 import asyncio
@@ -30,6 +36,7 @@ from pydantic import BaseModel
 from src.core.mcp_server import NexusDashboardMCP
 from src.config.settings import get_settings
 from src.services.user_service import UserService
+from src.services.credential_manager import CredentialManager
 from src.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -43,6 +50,9 @@ _mcp_initialized = False
 
 # User service instance
 _user_service: Optional[UserService] = None
+
+# Credential manager instance
+_credential_manager: Optional[CredentialManager] = None
 
 # Store for SSE connections with user context
 @dataclass
@@ -97,6 +107,14 @@ def get_user_service() -> UserService:
     if _user_service is None:
         _user_service = UserService()
     return _user_service
+
+
+def get_credential_manager() -> CredentialManager:
+    """Get or create the CredentialManager instance."""
+    global _credential_manager
+    if _credential_manager is None:
+        _credential_manager = CredentialManager()
+    return _credential_manager
 
 
 @dataclass
@@ -235,6 +253,70 @@ def can_execute_tool(tool_name: str, auth_result: AuthResult) -> bool:
         return True
 
     return False
+
+
+async def validate_cluster_access(
+    user: Optional[User],
+    tool_arguments: Dict[str, Any],
+    is_legacy_token: bool = False,
+) -> tuple[bool, Optional[str]]:
+    """Validate if user has access to the cluster specified in tool arguments.
+
+    Args:
+        user: User object (None for unauthenticated/legacy token)
+        tool_arguments: Tool arguments that may contain cluster reference
+        is_legacy_token: Whether authentication is via legacy token
+
+    Returns:
+        Tuple of (is_allowed, error_message)
+        - (True, None) if access is allowed
+        - (False, error_message) if access is denied
+    """
+    # Legacy token or no user context = allow all clusters
+    if is_legacy_token or not user:
+        return True, None
+
+    # Superuser can access all clusters
+    if user.is_superuser:
+        return True, None
+
+    # Extract cluster name from tool arguments
+    # Common parameter names for cluster identification
+    cluster_param_names = ["cluster", "cluster_name", "clusterName"]
+    cluster_name = None
+
+    for param_name in cluster_param_names:
+        if param_name in tool_arguments:
+            cluster_name = tool_arguments[param_name]
+            break
+
+    # If no cluster parameter found, allow the operation
+    # (some operations may not be cluster-specific)
+    if not cluster_name:
+        logger.debug(f"No cluster parameter found in tool arguments for user '{user.username}'")
+        return True, None
+
+    # Get cluster by name
+    credential_manager = get_credential_manager()
+    cluster = await credential_manager.get_cluster(cluster_name)
+
+    if not cluster:
+        error_msg = f"Cluster '{cluster_name}' not found"
+        logger.warning(f"Cluster access denied for user '{user.username}': {error_msg}")
+        return False, error_msg
+
+    # Check if user has access to this cluster
+    if not user.can_access_cluster(cluster.id):
+        error_msg = f"Access denied to cluster '{cluster_name}'"
+        logger.warning(
+            f"Cluster access denied for user '{user.username}': "
+            f"No access to cluster '{cluster_name}' (ID: {cluster.id})"
+        )
+        return False, error_msg
+
+    # Access granted
+    logger.debug(f"Cluster access granted for user '{user.username}' to cluster '{cluster_name}'")
+    return True, None
 
 
 @router.get("/health")
@@ -408,16 +490,29 @@ async def mcp_sse_post(
                 error = {"code": -32600, "message": f"Permission denied{user_info}: operation '{tool_name}' not allowed"}
                 logger.warning(f"Permission denied: {tool_name}{user_info}")
             else:
-                # Call the tool handler
-                contents = await mcp.handle_call_tool(tool_name, tool_arguments)
+                # Validate cluster access
+                cluster_allowed, cluster_error = await validate_cluster_access(
+                    user=auth_result.user,
+                    tool_arguments=tool_arguments,
+                    is_legacy_token=auth_result.is_legacy_token,
+                )
 
-                # Extract text from TextContent responses
-                result = {
-                    "content": [
-                        {"type": c.type, "text": c.text}
-                        for c in contents
-                    ]
-                }
+                if not cluster_allowed:
+                    # Cluster access denied
+                    user_info = f" for user '{auth_result.user.username}'" if auth_result.user else ""
+                    error = {"code": -32600, "message": f"Cluster access denied{user_info}: {cluster_error}"}
+                    logger.warning(f"Cluster access denied: {tool_name}{user_info} - {cluster_error}")
+                else:
+                    # Call the tool handler
+                    contents = await mcp.handle_call_tool(tool_name, tool_arguments)
+
+                    # Extract text from TextContent responses
+                    result = {
+                        "content": [
+                            {"type": c.type, "text": c.text}
+                            for c in contents
+                        ]
+                    }
 
         elif mcp_request.method == "ping":
             # Respond to ping
@@ -531,16 +626,29 @@ async def mcp_message(
                 error = {"code": -32600, "message": f"Permission denied{user_info}: operation '{tool_name}' not allowed"}
                 logger.warning(f"Permission denied: {tool_name}{user_info}")
             else:
-                # Call the tool handler
-                contents = await mcp.handle_call_tool(tool_name, tool_arguments)
+                # Validate cluster access
+                cluster_allowed, cluster_error = await validate_cluster_access(
+                    user=auth_result.user,
+                    tool_arguments=tool_arguments,
+                    is_legacy_token=auth_result.is_legacy_token,
+                )
 
-                # Extract text from TextContent responses
-                result = {
-                    "content": [
-                        {"type": c.type, "text": c.text}
-                        for c in contents
-                    ]
-                }
+                if not cluster_allowed:
+                    # Cluster access denied
+                    user_info = f" for user '{auth_result.user.username}'" if auth_result.user else ""
+                    error = {"code": -32600, "message": f"Cluster access denied{user_info}: {cluster_error}"}
+                    logger.warning(f"Cluster access denied: {tool_name}{user_info} - {cluster_error}")
+                else:
+                    # Call the tool handler
+                    contents = await mcp.handle_call_tool(tool_name, tool_arguments)
+
+                    # Extract text from TextContent responses
+                    result = {
+                        "content": [
+                            {"type": c.type, "text": c.text}
+                            for c in contents
+                        ]
+                    }
 
         elif mcp_request.method == "ping":
             # Respond to ping

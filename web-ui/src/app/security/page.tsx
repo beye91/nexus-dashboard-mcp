@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from 'react';
 import Navigation from '@/components/Navigation';
 import SearchableOperationsDropdown from '@/components/SearchableOperationsDropdown';
 import { api } from '@/lib/api-client';
-import type { SecurityConfig, User, Role, CreateUserRequest, CreateRoleRequest } from '@/types';
+import type { SecurityConfig, User, Role, Cluster, CreateUserRequest, CreateRoleRequest, LDAPConfig, LDAPConfigCreate, LDAPGroup, LDAPRoleMapping, LDAPClusterMapping } from '@/types';
 
-type TabType = 'users' | 'roles' | 'settings';
+type TabType = 'users' | 'roles' | 'settings' | 'ldap';
 
 export default function SecurityPage() {
   const [activeTab, setActiveTab] = useState<TabType>('users');
