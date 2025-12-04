@@ -22,14 +22,15 @@ export default function LoginPage() {
       if (setupMode) {
         // First user setup
         await api.auth.setup({ username, password, email });
-        router.push('/');
       } else {
         // Normal login
         await api.auth.login({ username, password });
-        router.push('/');
       }
+      // Use window.location for reliable redirect after login
+      window.location.href = '/';
     } catch (err: any) {
       console.error('Login error:', err);
+      setLoading(false);
       if (err.response?.status === 401) {
         setError('Invalid username or password');
       } else if (err.response?.data?.detail) {
@@ -37,8 +38,6 @@ export default function LoginPage() {
       } else {
         setError('Failed to login. Please try again.');
       }
-    } finally {
-      setLoading(false);
     }
   };
 
