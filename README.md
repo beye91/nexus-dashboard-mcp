@@ -129,7 +129,10 @@ Add to your Claude Desktop configuration:
         "sse-only",
         "--header",
         "Authorization: Bearer YOUR_API_TOKEN"
-      ]
+      ],
+      "env": {
+        "NODE_TLS_REJECT_UNAUTHORIZED": "0"
+      }
     }
   }
 }
@@ -139,7 +142,7 @@ Replace:
 - `YOUR_SERVER_IP` with your server's IP address (e.g., `192.168.1.213`)
 - `YOUR_API_TOKEN` with the API token you generated in step 4
 
-> **Note:** Since we use self-signed certificates, you may need to set `NODE_TLS_REJECT_UNAUTHORIZED=0` in your environment or accept the certificate in your system's trust store.
+> **Note:** The `NODE_TLS_REJECT_UNAUTHORIZED` environment variable is required to accept self-signed certificates. For production environments with proper CA-signed certificates, you can remove this setting.
 
 #### Local Deployment (same machine as Docker)
 
