@@ -246,12 +246,20 @@ class NexusDashboardMCP:
             inputSchema=input_schema
         )
 
-    async def handle_call_tool(self, name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+    async def handle_call_tool(
+        self,
+        name: str,
+        arguments: Dict[str, Any],
+        username: Optional[str] = None,
+        client_ip: Optional[str] = None,
+    ) -> List[TextContent]:
         """Handle tool execution.
 
         Args:
             name: Tool name
             arguments: Tool arguments
+            username: Username of the caller (for audit logging)
+            client_ip: Client IP address (for audit logging)
 
         Returns:
             List of TextContent responses
@@ -297,6 +305,10 @@ class NexusDashboardMCP:
             # Separate path params from query params for the request
             query_params = {k: v for k, v in arguments.items() if k not in path_params and k != "body"}
 
+            # Log user info for tool call
+            user_info = f" (user: {username})" if username else " (anonymous)"
+            logger.info(f"Tool call: {name}{user_info}")
+
             # Check security
             try:
                 await self.security_middleware.enforce_security(
@@ -306,11 +318,15 @@ class NexusDashboardMCP:
                 )
             except PermissionError as e:
                 error_msg = str(e)
+                logger.warning(f"Security denied for {name}{user_info}: {error_msg}")
                 await self.audit_logger.log_operation(
                     method=method,
                     path=path,
                     operation_id=operation_id,
                     error_message=error_msg,
+                    user_id=username,
+                    client_ip=client_ip,
+                    cluster_name=self.auth_middleware.cluster_name,
                 )
                 return [TextContent(
                     type="text",
@@ -334,7 +350,9 @@ class NexusDashboardMCP:
                     json_data=arguments.get("body"),
                 )
 
-                # Log success
+                # Log success (get resolved cluster name from auth middleware)
+                resolved_cluster = self.auth_middleware.cluster_name
+                logger.info(f"Tool success: {name}{user_info} - {method} {path} [cluster: {resolved_cluster}]")
                 await self.audit_logger.log_operation(
                     method=method,
                     path=path,
@@ -342,6 +360,9 @@ class NexusDashboardMCP:
                     request_body=arguments.get("body"),
                     response_status=200,
                     response_body=response,
+                    user_id=username,
+                    client_ip=client_ip,
+                    cluster_name=resolved_cluster,
                 )
 
                 return [TextContent(
@@ -351,13 +372,16 @@ class NexusDashboardMCP:
 
             except Exception as e:
                 error_msg = str(e)
-                logger.error(f"API request failed for {name}: {e}")
+                logger.error(f"API request failed for {name}{user_info}: {e}")
 
                 await self.audit_logger.log_operation(
                     method=method,
                     path=path,
                     operation_id=operation_id,
                     error_message=error_msg,
+                    user_id=username,
+                    client_ip=client_ip,
+                    cluster_name=self.auth_middleware.cluster_name,
                 )
 
                 return [TextContent(

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Navigation from '@/components/Navigation';
+import Footer from '@/components/Footer';
 import { api } from '@/lib/api-client';
 import type { Cluster, CreateClusterRequest } from '@/types';
 
@@ -135,10 +136,10 @@ export default function ClustersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       <Navigation />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         <div className="mb-8 flex justify-between items-center">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Cluster Management</h2>
@@ -384,6 +385,8 @@ export default function ClustersPage() {
           </div>
         </div>
       )}
+
+      <Footer />
     </div>
   );
 }

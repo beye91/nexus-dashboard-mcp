@@ -41,6 +41,34 @@ from src.models.user import User
 
 logger = logging.getLogger(__name__)
 
+
+def get_client_ip(request: Request) -> str:
+    """Extract client IP address from request, considering proxy headers.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        Client IP address string
+    """
+    # Check X-Forwarded-For header (set by reverse proxies)
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        # X-Forwarded-For can contain multiple IPs, first one is the client
+        return forwarded_for.split(",")[0].strip()
+
+    # Check X-Real-IP header (set by some proxies like nginx)
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
+
+    # Fall back to direct client IP
+    if request.client:
+        return request.client.host
+
+    return "unknown"
+
+
 # Create router for MCP endpoints
 router = APIRouter(prefix="/mcp", tags=["MCP Transport"])
 
@@ -498,8 +526,12 @@ async def mcp_sse_post(
                     error = {"code": -32600, "message": f"Cluster access denied{user_info}: {cluster_error}"}
                     logger.warning(f"Cluster access denied: {tool_name}{user_info} - {cluster_error}")
                 else:
-                    # Call the tool handler
-                    contents = await mcp.handle_call_tool(tool_name, tool_arguments)
+                    # Get username and client IP for audit logging
+                    username = auth_result.user.username if auth_result.user else ("legacy_token" if auth_result.is_legacy_token else None)
+                    client_ip = get_client_ip(request)
+
+                    # Call the tool handler with user context and client IP
+                    contents = await mcp.handle_call_tool(tool_name, tool_arguments, username=username, client_ip=client_ip)
 
                     # Extract text from TextContent responses
                     result = {
@@ -634,8 +666,12 @@ async def mcp_message(
                     error = {"code": -32600, "message": f"Cluster access denied{user_info}: {cluster_error}"}
                     logger.warning(f"Cluster access denied: {tool_name}{user_info} - {cluster_error}")
                 else:
-                    # Call the tool handler
-                    contents = await mcp.handle_call_tool(tool_name, tool_arguments)
+                    # Get username and client IP for audit logging
+                    username = auth_result.user.username if auth_result.user else ("legacy_token" if auth_result.is_legacy_token else None)
+                    client_ip = get_client_ip(request)
+
+                    # Call the tool handler with user context and client IP
+                    contents = await mcp.handle_call_tool(tool_name, tool_arguments, username=username, client_ip=client_ip)
 
                     # Extract text from TextContent responses
                     result = {
