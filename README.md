@@ -94,7 +94,20 @@ This will:
    - Click "Test Connection" to verify
    - Save the cluster configuration
 
-### 4. Configure Claude Desktop
+### 4. Generate Your API Token
+
+Before configuring Claude Desktop, you need to generate a personal API token:
+
+1. Open the Web UI: `https://YOUR_SERVER_IP:7443`
+2. Navigate to **Security** in the sidebar
+3. Go to the **Users** tab
+4. Click on your user (e.g., `admin`)
+5. Click **Generate API Token**
+6. Copy the generated token (it will only be shown once!)
+
+This token authenticates your Claude Desktop connection and tracks all operations in the audit log.
+
+### 5. Configure Claude Desktop
 
 Add to your Claude Desktop configuration:
 
@@ -113,14 +126,18 @@ Add to your Claude Desktop configuration:
         "mcp-remote@latest",
         "https://YOUR_SERVER_IP:8444/mcp/sse",
         "--transport",
-        "sse-only"
+        "sse-only",
+        "--header",
+        "Authorization: Bearer YOUR_API_TOKEN"
       ]
     }
   }
 }
 ```
 
-Replace `YOUR_SERVER_IP` with your server's IP address.
+Replace:
+- `YOUR_SERVER_IP` with your server's IP address (e.g., `192.168.1.213`)
+- `YOUR_API_TOKEN` with the API token you generated in step 4
 
 > **Note:** Since we use self-signed certificates, you may need to set `NODE_TLS_REJECT_UNAUTHORIZED=0` in your environment or accept the certificate in your system's trust store.
 
@@ -144,6 +161,8 @@ Replace `YOUR_SERVER_IP` with your server's IP address.
 ```
 
 Restart Claude Desktop, and you'll see the Nexus Dashboard tools available!
+
+> **Important:** Without a valid API token, Claude Desktop will not be able to access any MCP tools. Each user gets their own token, and all operations are logged with the user identity.
 
 ## Architecture
 
