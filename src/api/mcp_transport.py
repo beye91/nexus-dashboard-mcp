@@ -192,8 +192,11 @@ async def validate_token(authorization: Optional[str]) -> AuthResult:
 def filter_tools_for_user(tools: List[Dict], auth_result: AuthResult) -> List[Dict]:
     """Filter tools based on user's allowed operations.
 
+    For consolidated tools, filters the operations enum to only allowed operations.
+    A tool is included if the user has access to at least one operation in it.
+
     Args:
-        tools: List of tool dictionaries
+        tools: List of tool dictionaries (consolidated or legacy)
         auth_result: Authentication result with user permissions
 
     Returns:
@@ -207,33 +210,65 @@ def filter_tools_for_user(tools: List[Dict], auth_result: AuthResult) -> List[Di
     if auth_result.user.is_superuser:
         return tools
 
-    # If no operations are allowed, filter to read-only operations
+    # If no operations are allowed, return empty
     allowed_ops = auth_result.allowed_operations
     if not allowed_ops:
-        # No explicit operations = no tools (or could filter to GET-only)
         logger.info(f"User '{auth_result.user.username}' has no allowed operations")
         return []
 
-    # Filter tools by allowed operations
+    # Filter tools
     filtered = []
     for tool in tools:
         tool_name = tool.get("name", "")
-        if tool_name in allowed_ops:
-            filtered.append(tool)
+        input_schema = tool.get("inputSchema", {})
+        properties = input_schema.get("properties", {})
+        operation_prop = properties.get("operation", {})
+        operation_enum = operation_prop.get("enum", [])
+
+        if operation_enum:
+            # This is a consolidated tool - filter the operations enum
+            allowed_in_tool = [op for op in operation_enum if op in allowed_ops]
+
+            if allowed_in_tool:
+                # Create filtered tool with restricted operations
+                filtered_tool = tool.copy()
+                filtered_schema = input_schema.copy()
+                filtered_props = properties.copy()
+                filtered_op = operation_prop.copy()
+
+                filtered_op["enum"] = allowed_in_tool
+                filtered_op["description"] = f"Operation to execute ({len(allowed_in_tool)} available)"
+                filtered_props["operation"] = filtered_op
+                filtered_schema["properties"] = filtered_props
+                filtered_tool["inputSchema"] = filtered_schema
+
+                filtered.append(filtered_tool)
+        else:
+            # Legacy tool - check if tool name is in allowed operations
+            if tool_name in allowed_ops:
+                filtered.append(tool)
 
     logger.debug(f"Filtered {len(tools)} tools to {len(filtered)} for user '{auth_result.user.username}'")
     return filtered
 
 
-def can_execute_tool(tool_name: str, auth_result: AuthResult) -> bool:
-    """Check if user can execute a specific tool.
+def can_execute_tool(
+    tool_name: str,
+    auth_result: AuthResult,
+    operation_id: Optional[str] = None
+) -> bool:
+    """Check if user can execute a specific tool/operation.
+
+    For consolidated tools, checks if the specific operation_id is allowed.
+    For legacy tools, checks if the tool_name is allowed.
 
     Args:
-        tool_name: Name of the tool to execute
+        tool_name: Name of the tool (resource key for consolidated, operation for legacy)
         auth_result: Authentication result with user permissions
+        operation_id: For consolidated tools, the specific operation to execute
 
     Returns:
-        True if user can execute the tool
+        True if user can execute the tool/operation
     """
     # Legacy token or no user context = allow all
     if auth_result.is_legacy_token or not auth_result.user:
@@ -243,11 +278,17 @@ def can_execute_tool(tool_name: str, auth_result: AuthResult) -> bool:
     if auth_result.user.is_superuser:
         return True
 
-    # Check if operation is in allowed list
-    if auth_result.allowed_operations and tool_name in auth_result.allowed_operations:
-        return True
+    # Get allowed operations
+    allowed_ops = auth_result.allowed_operations
+    if not allowed_ops:
+        return False
 
-    return False
+    # For consolidated tools, check the specific operation
+    if operation_id:
+        return operation_id in allowed_ops
+
+    # For legacy tools, check the tool name
+    return tool_name in allowed_ops
 
 
 async def validate_cluster_access(
@@ -458,17 +499,18 @@ async def mcp_sse_post(
             return {}
 
         elif mcp_request.method == "tools/list":
-            # List available tools (filtered by user permissions)
+            # List available tools (consolidated by resource)
+            from src.core.resource_grouper import group_operations_by_resource, build_consolidated_tool
+
+            grouped = group_operations_by_resource(mcp.operations)
             tools = []
-            for operation in mcp.operations:
-                tool = mcp._build_tool_from_operation(operation)
-                tools.append({
-                    "name": tool.name,
-                    "description": tool.description,
-                    "inputSchema": tool.inputSchema,
-                })
+            for resource_key, ops in grouped.items():
+                tool_def = build_consolidated_tool(resource_key, ops)
+                tools.append(tool_def)
+
             # Filter tools based on user permissions
             filtered_tools = filter_tools_for_user(tools, auth_result)
+            logger.info(f"Returning {len(filtered_tools)} consolidated tools (from {len(mcp.operations)} operations)")
             result = {"tools": filtered_tools}
 
         elif mcp_request.method == "tools/call":
@@ -477,18 +519,23 @@ async def mcp_sse_post(
             tool_name = params.get("name", "")
             tool_arguments = params.get("arguments", {})
 
+            # Extract operation_id for consolidated tools
+            operation_id = tool_arguments.get("operation")
+
             if not tool_name:
                 error = {"code": -32602, "message": "Missing tool name"}
-            elif not can_execute_tool(tool_name, auth_result):
+            elif not can_execute_tool(tool_name, auth_result, operation_id):
                 # Permission denied
                 user_info = f" for user '{auth_result.user.username}'" if auth_result.user else ""
-                error = {"code": -32600, "message": f"Permission denied{user_info}: operation '{tool_name}' not allowed"}
-                logger.warning(f"Permission denied: {tool_name}{user_info}")
+                op_info = f"operation '{operation_id}'" if operation_id else f"tool '{tool_name}'"
+                error = {"code": -32600, "message": f"Permission denied{user_info}: {op_info} not allowed"}
+                logger.warning(f"Permission denied: {op_info}{user_info}")
             else:
-                # Validate cluster access
+                # Validate cluster access (check params for consolidated, arguments for legacy)
+                check_params = tool_arguments.get("params", tool_arguments)
                 cluster_allowed, cluster_error = await validate_cluster_access(
                     user=auth_result.user,
-                    tool_arguments=tool_arguments,
+                    tool_arguments=check_params,
                     is_legacy_token=auth_result.is_legacy_token,
                 )
 
@@ -594,17 +641,18 @@ async def mcp_message(
             return {}
 
         elif mcp_request.method == "tools/list":
-            # List available tools (filtered by user permissions)
+            # List available tools (consolidated by resource)
+            from src.core.resource_grouper import group_operations_by_resource, build_consolidated_tool
+
+            grouped = group_operations_by_resource(mcp.operations)
             tools = []
-            for operation in mcp.operations:
-                tool = mcp._build_tool_from_operation(operation)
-                tools.append({
-                    "name": tool.name,
-                    "description": tool.description,
-                    "inputSchema": tool.inputSchema,
-                })
+            for resource_key, ops in grouped.items():
+                tool_def = build_consolidated_tool(resource_key, ops)
+                tools.append(tool_def)
+
             # Filter tools based on user permissions
             filtered_tools = filter_tools_for_user(tools, auth_result)
+            logger.info(f"Returning {len(filtered_tools)} consolidated tools (from {len(mcp.operations)} operations)")
             result = {"tools": filtered_tools}
 
         elif mcp_request.method == "tools/call":
@@ -613,18 +661,23 @@ async def mcp_message(
             tool_name = params.get("name", "")
             tool_arguments = params.get("arguments", {})
 
+            # Extract operation_id for consolidated tools
+            operation_id = tool_arguments.get("operation")
+
             if not tool_name:
                 error = {"code": -32602, "message": "Missing tool name"}
-            elif not can_execute_tool(tool_name, auth_result):
+            elif not can_execute_tool(tool_name, auth_result, operation_id):
                 # Permission denied
                 user_info = f" for user '{auth_result.user.username}'" if auth_result.user else ""
-                error = {"code": -32600, "message": f"Permission denied{user_info}: operation '{tool_name}' not allowed"}
-                logger.warning(f"Permission denied: {tool_name}{user_info}")
+                op_info = f"operation '{operation_id}'" if operation_id else f"tool '{tool_name}'"
+                error = {"code": -32600, "message": f"Permission denied{user_info}: {op_info} not allowed"}
+                logger.warning(f"Permission denied: {op_info}{user_info}")
             else:
-                # Validate cluster access
+                # Validate cluster access (check params for consolidated, arguments for legacy)
+                check_params = tool_arguments.get("params", tool_arguments)
                 cluster_allowed, cluster_error = await validate_cluster_access(
                     user=auth_result.user,
-                    tool_arguments=tool_arguments,
+                    tool_arguments=check_params,
                     is_legacy_token=auth_result.is_legacy_token,
                 )
 
@@ -699,7 +752,8 @@ async def mcp_message(
 async def list_tools(authorization: Optional[str] = Header(None)):
     """List all available MCP tools (convenience endpoint).
 
-    Tools are filtered based on the authenticated user's permissions.
+    Tools are consolidated by resource type and filtered based on
+    the authenticated user's permissions.
     """
     auth_result = await validate_token(authorization)
     if not auth_result.is_valid:
@@ -707,14 +761,14 @@ async def list_tools(authorization: Optional[str] = Header(None)):
 
     mcp = await get_mcp_instance()
 
+    # Build consolidated tools
+    from src.core.resource_grouper import group_operations_by_resource, build_consolidated_tool
+
+    grouped = group_operations_by_resource(mcp.operations)
     tools = []
-    for operation in mcp.operations:
-        tool = mcp._build_tool_from_operation(operation)
-        tools.append({
-            "name": tool.name,
-            "description": tool.description,
-            "inputSchema": tool.inputSchema,
-        })
+    for resource_key, ops in grouped.items():
+        tool_def = build_consolidated_tool(resource_key, ops)
+        tools.append(tool_def)
 
     # Filter tools based on user permissions
     filtered_tools = filter_tools_for_user(tools, auth_result)
@@ -727,7 +781,8 @@ async def list_tools(authorization: Optional[str] = Header(None)):
 
     return {
         "count": len(filtered_tools),
-        "total_available": len(tools),
+        "total_operations": len(mcp.operations),
+        "total_resource_groups": len(tools),
         "user": auth_result.user.username if auth_result.user else None,
         "tools": filtered_tools,
     }

@@ -159,7 +159,7 @@ class NexusDashboardMCP:
         return loaded_count
 
     def _build_tool_from_operation(self, operation: Dict[str, Any]) -> Tool:
-        """Build MCP Tool from operation.
+        """Build MCP Tool from operation (legacy - one tool per operation).
 
         Args:
             operation: Operation dictionary (includes api_name)
@@ -246,24 +246,55 @@ class NexusDashboardMCP:
             inputSchema=input_schema
         )
 
+    def _build_consolidated_tool(self, resource_key: str, operations: List[Dict[str, Any]]) -> Tool:
+        """Build a consolidated MCP Tool for a resource group.
+
+        Args:
+            resource_key: Resource key like "analyze_fabrics"
+            operations: List of operations in this resource group
+
+        Returns:
+            Tool instance with operation enum
+        """
+        from src.core.resource_grouper import (
+            build_resource_description,
+            build_consolidated_tool_schema
+        )
+
+        return Tool(
+            name=resource_key,
+            description=build_resource_description(resource_key, operations),
+            inputSchema=build_consolidated_tool_schema(resource_key, operations)
+        )
+
     async def handle_call_tool(self, name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         """Handle tool execution.
 
+        Supports both consolidated tools (with 'operation' parameter) and
+        legacy individual operation tools.
+
         Args:
-            name: Tool name
-            arguments: Tool arguments
+            name: Tool name (resource key like "analyze_fabrics" or legacy "api_operationId")
+            arguments: Tool arguments. For consolidated tools: {"operation": "opId", "params": {...}}
+                      For legacy tools: direct parameters
 
         Returns:
             List of TextContent responses
         """
         try:
-            # Find operation from tool name
-            # Handle both "manage_operationId" and just "operationId" formats
-            if "_" in name:
-                api_name, operation_id = name.split("_", 1)
+            # Check if this is a consolidated tool call (has 'operation' in arguments)
+            if "operation" in arguments:
+                # Consolidated tool format
+                operation_id = arguments["operation"]
+                actual_params = arguments.get("params", {})
             else:
-                api_name = "manage"  # Default to manage API
-                operation_id = name
+                # Legacy format: tool name is "api_operationId"
+                if "_" in name:
+                    api_name, operation_id = name.split("_", 1)
+                else:
+                    api_name = "manage"
+                    operation_id = name
+                actual_params = arguments
 
             operation = next(
                 (op for op in self.operations if op["operation_id"] == operation_id),
@@ -283,8 +314,8 @@ class NexusDashboardMCP:
             import re
             path_params = re.findall(r'\{([^}]+)\}', path)
             for param in path_params:
-                if param in arguments:
-                    path = path.replace(f"{{{param}}}", str(arguments[param]))
+                if param in actual_params:
+                    path = path.replace(f"{{{param}}}", str(actual_params[param]))
                 else:
                     return [TextContent(
                         type="text",
@@ -295,7 +326,7 @@ class NexusDashboardMCP:
                     )]
 
             # Separate path params from query params for the request
-            query_params = {k: v for k, v in arguments.items() if k not in path_params and k != "body"}
+            query_params = {k: v for k, v in actual_params.items() if k not in path_params and k != "body"}
 
             # Check security
             try:
@@ -331,7 +362,7 @@ class NexusDashboardMCP:
                     path=path,
                     api_name=api_name,
                     params=query_params if query_params else None,
-                    json_data=arguments.get("body"),
+                    json_data=actual_params.get("body"),
                 )
 
                 # Log success
@@ -339,7 +370,7 @@ class NexusDashboardMCP:
                     method=method,
                     path=path,
                     operation_id=operation_id,
-                    request_body=arguments.get("body"),
+                    request_body=actual_params.get("body"),
                     response_status=200,
                     response_body=response,
                 )
@@ -397,17 +428,23 @@ class NexusDashboardMCP:
             async def handle_tool_call(name: str, arguments: dict) -> List[TextContent]:
                 return await self.handle_call_tool(name, arguments)
 
-            # Register tools
+            # Register tools (consolidated by resource)
             @self.server.list_tools()
             async def list_tools() -> List[Tool]:
+                from src.core.resource_grouper import group_operations_by_resource
+
+                # Group operations by resource type
+                grouped = group_operations_by_resource(self.operations)
+
                 tools = []
-                for operation in self.operations:  # Register all operations
-                    tool = self._build_tool_from_operation(operation)
+                for resource_key, ops in grouped.items():
+                    tool = self._build_consolidated_tool(resource_key, ops)
                     tools.append(tool)
-                logger.info(f"Listing {len(tools)} tools")
+
+                logger.info(f"Listing {len(tools)} consolidated tools (from {len(self.operations)} operations)")
                 return tools
 
-            logger.info(f"Registered tool handlers for {len(self.operations)} operations across {loaded_count} APIs")
+            logger.info(f"Registered tool handlers for {len(self.operations)} operations across {loaded_count} APIs (consolidated)")
 
             # Register MCP resources for guidance
             @self.server.list_resources()

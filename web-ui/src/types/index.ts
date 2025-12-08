@@ -407,3 +407,63 @@ export interface SystemPromptSection {
   created_at: string | null;
   updated_at: string | null;
 }
+
+// ==================== Resource Group Types (Tool Consolidation) ====================
+
+export interface ResourceGroupOperation {
+  id: number;
+  group_id: number;
+  operation_id: string;
+  api_name: string;
+  created_at: string;
+}
+
+export interface ResourceGroup {
+  id: number;
+  group_key: string;
+  display_name: string | null;
+  description: string | null;
+  is_enabled: boolean;
+  is_custom: boolean;
+  sort_order: number;
+  operations_count: number;
+  operations: ResourceGroupOperation[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ResourceGroupCreate {
+  group_key: string;
+  display_name?: string;
+  description?: string;
+  is_enabled?: boolean;
+  sort_order?: number;
+}
+
+export interface ResourceGroupUpdate {
+  display_name?: string;
+  description?: string;
+  is_enabled?: boolean;
+  sort_order?: number;
+}
+
+export interface ResourceGroupStats {
+  total_groups: number;
+  enabled_groups: number;
+  custom_groups: number;
+  auto_generated_groups: number;
+  mapped_operations: number;
+  total_operations: number;
+  unmapped_operations: number;
+}
+
+export interface UnmappedOperationsResponse {
+  total: number;
+  operations: {
+    operation_id: string;
+    api_name: string;
+    http_method: string;
+    path: string;
+    description: string | null;
+  }[];
+}

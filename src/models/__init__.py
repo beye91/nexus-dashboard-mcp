@@ -14,6 +14,7 @@ from .guidance import (
     ToolDescriptionOverride,
     SystemPromptSection,
 )
+from .resource_group import ResourceGroup, ResourceGroupMapping
 
 __all__ = [
     "Cluster",
@@ -35,4 +36,6 @@ __all__ = [
     "WorkflowStep",
     "ToolDescriptionOverride",
     "SystemPromptSection",
+    "ResourceGroup",
+    "ResourceGroupMapping",
 ]

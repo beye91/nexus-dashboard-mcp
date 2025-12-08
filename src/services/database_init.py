@@ -204,6 +204,24 @@ async def sync_role_operations():
         logger.info("Role operations sync completed")
 
 
+async def generate_resource_groups():
+    """Generate default resource groups for MCP tool consolidation.
+
+    This creates resource groups based on the first path segment of each API endpoint,
+    allowing the MCP server to expose consolidated tools instead of individual operations.
+    """
+    try:
+        from src.services.resource_group_service import ResourceGroupService
+        service = ResourceGroupService()
+        count = await service.generate_default_groups()
+        if count > 0:
+            logger.info(f"Generated {count} default resource groups for tool consolidation")
+        else:
+            logger.info("Resource groups already exist - skipping generation")
+    except Exception as e:
+        logger.error(f"Failed to generate resource groups: {e}")
+
+
 async def initialize_database_defaults():
     """Initialize all default database records.
 
@@ -220,5 +238,8 @@ async def initialize_database_defaults():
 
     # Sync role operations for system roles
     await sync_role_operations()
+
+    # Generate default resource groups for tool consolidation
+    await generate_resource_groups()
 
     logger.info("Database initialization completed")

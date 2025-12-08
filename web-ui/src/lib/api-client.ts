@@ -31,6 +31,11 @@ import type {
   WorkflowStep,
   ToolDescriptionOverride,
   SystemPromptSection,
+  ResourceGroup,
+  ResourceGroupCreate,
+  ResourceGroupUpdate,
+  ResourceGroupStats,
+  UnmappedOperationsResponse,
 } from '@/types';
 
 // Use relative URLs - Next.js rewrites will proxy to the backend
@@ -268,5 +273,35 @@ export const api = {
       apiClient.delete(`/api/guidance/system-prompt/sections/${sectionName}`),
     getGeneratedSystemPrompt: () =>
       apiClient.get<{ prompt: string }>('/api/guidance/system-prompt'),
+  },
+
+  // Resource Groups (Tool Consolidation)
+  resourceGroups: {
+    list: (params?: { enabled_only?: boolean; custom_only?: boolean }) =>
+      apiClient.get<ResourceGroup[]>('/api/resource-groups', { params }),
+    get: (id: number) =>
+      apiClient.get<ResourceGroup>(`/api/resource-groups/${id}`),
+    create: (data: ResourceGroupCreate) =>
+      apiClient.post<ResourceGroup>('/api/resource-groups', data),
+    update: (id: number, data: ResourceGroupUpdate) =>
+      apiClient.put<ResourceGroup>(`/api/resource-groups/${id}`, data),
+    delete: (id: number) =>
+      apiClient.delete(`/api/resource-groups/${id}`),
+    getStats: () =>
+      apiClient.get<ResourceGroupStats>('/api/resource-groups/stats'),
+    generate: (force?: boolean) =>
+      apiClient.post<{ message: string; groups_created: number }>('/api/resource-groups/generate', null, {
+        params: { force },
+      }),
+    addOperations: (id: number, operations: { operation_id: string; api_name: string }[]) =>
+      apiClient.put<ResourceGroup>(`/api/resource-groups/${id}/operations`, { operations }),
+    removeOperations: (id: number, operationIds: string[]) =>
+      apiClient.delete(`/api/resource-groups/${id}/operations`, {
+        params: { operation_ids: operationIds },
+      }),
+    getUnmappedOperations: (apiName?: string) =>
+      apiClient.get<UnmappedOperationsResponse>('/api/resource-groups/unmapped/operations', {
+        params: apiName ? { api_name: apiName } : {},
+      }),
   },
 };

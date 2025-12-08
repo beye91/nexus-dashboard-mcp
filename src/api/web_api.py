@@ -24,6 +24,7 @@ from src.services.user_service import UserService
 from src.services.role_service import RoleService
 from src.services.ldap_service import LDAPService
 from src.services.guidance_service import GuidanceService
+from src.services.resource_group_service import ResourceGroupService
 from src.services.nexus_api import NexusAPIClient
 from src.utils.encryption import decrypt_password
 from src.api.mcp_transport import router as mcp_router
@@ -495,12 +496,63 @@ class SystemPromptSectionCreate(BaseModel):
     is_active: bool = True
 
 
+# ==================== Resource Group Pydantic Models ====================
+
+class ResourceGroupCreate(BaseModel):
+    """Request model for creating a resource group."""
+    group_key: str = Field(..., min_length=1, max_length=100)
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    is_enabled: bool = True
+    sort_order: int = 0
+
+
+class ResourceGroupUpdate(BaseModel):
+    """Request model for updating a resource group."""
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    is_enabled: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class ResourceGroupResponse(BaseModel):
+    """Response model for resource group."""
+    id: int
+    group_key: str
+    display_name: Optional[str]
+    description: Optional[str]
+    is_enabled: bool
+    is_custom: bool
+    sort_order: int
+    operations_count: int
+    operations: Optional[List[dict]] = None
+    created_at: str
+    updated_at: str
+
+
+class ResourceGroupOperationRequest(BaseModel):
+    """Request model for adding operations to a group."""
+    operations: List[dict]  # List of {"operation_id": str, "api_name": str}
+
+
+class ResourceGroupStatsResponse(BaseModel):
+    """Response model for resource group statistics."""
+    total_groups: int
+    enabled_groups: int
+    custom_groups: int
+    auto_generated_groups: int
+    mapped_operations: int
+    total_operations: int
+    unmapped_operations: int
+
+
 # Initialize services
 credential_manager = CredentialManager()
 user_service = UserService()
 role_service = RoleService()
 ldap_service = LDAPService()
 guidance_service = GuidanceService()
+resource_group_service = ResourceGroupService()
 settings = get_settings()
 db = get_db()
 
@@ -2317,6 +2369,250 @@ async def get_generated_system_prompt(_user: User = Depends(require_auth)):
     """Get the complete generated system prompt."""
     prompt = await guidance_service.generate_system_prompt()
     return {"prompt": prompt}
+
+
+# ==================== Resource Group Endpoints (Tool Consolidation) ====================
+
+@app.get("/api/resource-groups", response_model=List[ResourceGroupResponse])
+async def list_resource_groups(
+    enabled_only: bool = Query(False),
+    custom_only: bool = Query(False),
+    _user: User = Depends(require_auth),
+):
+    """List all resource groups for MCP tool consolidation."""
+    groups = await resource_group_service.list_groups(
+        enabled_only=enabled_only,
+        custom_only=custom_only,
+    )
+
+    return [
+        ResourceGroupResponse(
+            id=g.id,
+            group_key=g.group_key,
+            display_name=g.display_name,
+            description=g.description,
+            is_enabled=g.is_enabled,
+            is_custom=g.is_custom,
+            sort_order=g.sort_order,
+            operations_count=len(g.mappings) if g.mappings else 0,
+            operations=[m.to_dict() for m in g.mappings] if g.mappings else [],
+            created_at=g.created_at.isoformat(),
+            updated_at=g.updated_at.isoformat(),
+        )
+        for g in groups
+    ]
+
+
+@app.post("/api/resource-groups", response_model=ResourceGroupResponse, status_code=201)
+async def create_resource_group(
+    group_data: ResourceGroupCreate,
+    _admin: User = Depends(require_superuser),
+):
+    """Create a new custom resource group (superuser only)."""
+    try:
+        group = await resource_group_service.create_group(
+            group_key=group_data.group_key,
+            display_name=group_data.display_name,
+            description=group_data.description,
+            is_enabled=group_data.is_enabled,
+            is_custom=True,  # User-created groups are always custom
+            sort_order=group_data.sort_order,
+        )
+
+        return ResourceGroupResponse(
+            id=group.id,
+            group_key=group.group_key,
+            display_name=group.display_name,
+            description=group.description,
+            is_enabled=group.is_enabled,
+            is_custom=group.is_custom,
+            sort_order=group.sort_order,
+            operations_count=0,
+            operations=[],
+            created_at=group.created_at.isoformat(),
+            updated_at=group.updated_at.isoformat(),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/resource-groups/stats", response_model=ResourceGroupStatsResponse)
+async def get_resource_group_stats(_user: User = Depends(require_auth)):
+    """Get resource group statistics."""
+    stats = await resource_group_service.get_stats()
+    return ResourceGroupStatsResponse(**stats)
+
+
+@app.post("/api/resource-groups/generate")
+async def generate_default_resource_groups(
+    force: bool = Query(False, description="Force regeneration even if groups exist"),
+    _admin: User = Depends(require_superuser),
+):
+    """Generate default resource groups from API endpoints (superuser only).
+
+    This creates groups based on the first path segment of each API endpoint.
+    """
+    count = await resource_group_service.generate_default_groups(force=force)
+    return {
+        "message": f"Generated {count} resource groups" if count > 0 else "Resource groups already exist",
+        "groups_created": count,
+    }
+
+
+@app.get("/api/resource-groups/{group_id}", response_model=ResourceGroupResponse)
+async def get_resource_group(
+    group_id: int,
+    _user: User = Depends(require_auth),
+):
+    """Get resource group by ID with operations."""
+    group = await resource_group_service.get_group(group_id)
+
+    if not group:
+        raise HTTPException(status_code=404, detail="Resource group not found")
+
+    return ResourceGroupResponse(
+        id=group.id,
+        group_key=group.group_key,
+        display_name=group.display_name,
+        description=group.description,
+        is_enabled=group.is_enabled,
+        is_custom=group.is_custom,
+        sort_order=group.sort_order,
+        operations_count=len(group.mappings) if group.mappings else 0,
+        operations=[m.to_dict() for m in group.mappings] if group.mappings else [],
+        created_at=group.created_at.isoformat(),
+        updated_at=group.updated_at.isoformat(),
+    )
+
+
+@app.put("/api/resource-groups/{group_id}", response_model=ResourceGroupResponse)
+async def update_resource_group(
+    group_id: int,
+    group_data: ResourceGroupUpdate,
+    _admin: User = Depends(require_superuser),
+):
+    """Update resource group (superuser only)."""
+    group = await resource_group_service.update_group(
+        group_id=group_id,
+        display_name=group_data.display_name,
+        description=group_data.description,
+        is_enabled=group_data.is_enabled,
+        sort_order=group_data.sort_order,
+    )
+
+    if not group:
+        raise HTTPException(status_code=404, detail="Resource group not found")
+
+    # Reload to get mappings
+    group = await resource_group_service.get_group(group_id)
+
+    return ResourceGroupResponse(
+        id=group.id,
+        group_key=group.group_key,
+        display_name=group.display_name,
+        description=group.description,
+        is_enabled=group.is_enabled,
+        is_custom=group.is_custom,
+        sort_order=group.sort_order,
+        operations_count=len(group.mappings) if group.mappings else 0,
+        operations=[m.to_dict() for m in group.mappings] if group.mappings else [],
+        created_at=group.created_at.isoformat(),
+        updated_at=group.updated_at.isoformat(),
+    )
+
+
+@app.delete("/api/resource-groups/{group_id}", status_code=204)
+async def delete_resource_group(
+    group_id: int,
+    _admin: User = Depends(require_superuser),
+):
+    """Delete resource group (superuser only, cannot delete auto-generated groups)."""
+    try:
+        deleted = await resource_group_service.delete_group(group_id)
+
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Resource group not found")
+
+        return None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/resource-groups/{group_id}/operations", response_model=ResourceGroupResponse)
+async def add_operations_to_group(
+    group_id: int,
+    ops_data: ResourceGroupOperationRequest,
+    _admin: User = Depends(require_superuser),
+):
+    """Add operations to a resource group (superuser only).
+
+    Operations are moved from their current group to this one.
+    Each operation can only belong to one group.
+    """
+    group = await resource_group_service.add_operations_to_group(
+        group_id=group_id,
+        operations=ops_data.operations,
+    )
+
+    if not group:
+        raise HTTPException(status_code=404, detail="Resource group not found")
+
+    return ResourceGroupResponse(
+        id=group.id,
+        group_key=group.group_key,
+        display_name=group.display_name,
+        description=group.description,
+        is_enabled=group.is_enabled,
+        is_custom=group.is_custom,
+        sort_order=group.sort_order,
+        operations_count=len(group.mappings) if group.mappings else 0,
+        operations=[m.to_dict() for m in group.mappings] if group.mappings else [],
+        created_at=group.created_at.isoformat(),
+        updated_at=group.updated_at.isoformat(),
+    )
+
+
+@app.delete("/api/resource-groups/{group_id}/operations")
+async def remove_operations_from_group(
+    group_id: int,
+    operation_ids: List[str] = Query(..., description="Operation IDs to remove"),
+    _admin: User = Depends(require_superuser),
+):
+    """Remove operations from a resource group (superuser only)."""
+    group = await resource_group_service.remove_operations_from_group(
+        group_id=group_id,
+        operation_ids=operation_ids,
+    )
+
+    if not group:
+        raise HTTPException(status_code=404, detail="Resource group not found")
+
+    return ResourceGroupResponse(
+        id=group.id,
+        group_key=group.group_key,
+        display_name=group.display_name,
+        description=group.description,
+        is_enabled=group.is_enabled,
+        is_custom=group.is_custom,
+        sort_order=group.sort_order,
+        operations_count=len(group.mappings) if group.mappings else 0,
+        operations=[m.to_dict() for m in group.mappings] if group.mappings else [],
+        created_at=group.created_at.isoformat(),
+        updated_at=group.updated_at.isoformat(),
+    )
+
+
+@app.get("/api/resource-groups/unmapped/operations")
+async def get_unmapped_operations(
+    api_name: Optional[str] = Query(None, description="Filter by API name"),
+    _user: User = Depends(require_auth),
+):
+    """Get operations that are not mapped to any resource group."""
+    operations = await resource_group_service.get_unmapped_operations(api_name=api_name)
+    return {
+        "total": len(operations),
+        "operations": operations,
+    }
 
 
 if __name__ == "__main__":

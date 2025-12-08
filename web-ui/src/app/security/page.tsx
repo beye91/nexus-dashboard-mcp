@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from 'react';
 import Navigation from '@/components/Navigation';
 import SearchableOperationsDropdown from '@/components/SearchableOperationsDropdown';
 import { api } from '@/lib/api-client';
-import type { SecurityConfig, User, Role, Cluster, CreateUserRequest, CreateRoleRequest, LDAPConfig, LDAPConfigCreate, LDAPGroup, LDAPRoleMapping, LDAPClusterMapping } from '@/types';
+import type { SecurityConfig, User, Role, Cluster, CreateUserRequest, CreateRoleRequest, LDAPConfig, LDAPConfigCreate, LDAPGroup, LDAPRoleMapping, LDAPClusterMapping, ResourceGroup, ResourceGroupStats } from '@/types';
 
-type TabType = 'users' | 'roles' | 'settings' | 'ldap';
+type TabType = 'users' | 'roles' | 'settings' | 'ldap' | 'toolGroups';
 
 export default function SecurityPage() {
   const [activeTab, setActiveTab] = useState<TabType>('users');
@@ -40,6 +40,19 @@ export default function SecurityPage() {
 
   // Cluster state
   const [clusters, setClusters] = useState<Cluster[]>([]);
+
+  // Resource Groups state
+  const [resourceGroups, setResourceGroups] = useState<ResourceGroup[]>([]);
+  const [resourceGroupStats, setResourceGroupStats] = useState<ResourceGroupStats | null>(null);
+  const [editingResourceGroup, setEditingResourceGroup] = useState<ResourceGroup | null>(null);
+  const [showResourceGroupModal, setShowResourceGroupModal] = useState(false);
+  const [resourceGroupForm, setResourceGroupForm] = useState({
+    group_key: '',
+    display_name: '',
+    description: '',
+    is_enabled: true,
+    sort_order: 0,
+  });
 
   // API Token state
   const [showTokenModal, setShowTokenModal] = useState(false);
@@ -123,6 +136,13 @@ export default function SecurityPage() {
           setLdapConfigs(ldapRes.data);
           setRoles(rolesRes.data);
           setClusters(clustersRes.data);
+        } else if (activeTab === 'toolGroups') {
+          const [groupsRes, statsRes] = await Promise.all([
+            api.resourceGroups.list(),
+            api.resourceGroups.getStats(),
+          ]);
+          setResourceGroups(groupsRes.data);
+          setResourceGroupStats(statsRes.data);
         }
         setError(null);
       } catch (err: any) {
@@ -532,6 +552,114 @@ export default function SecurityPage() {
     setShowLdapModal(true);
   };
 
+  // Resource Group CRUD operations
+  const handleCreateResourceGroup = async () => {
+    try {
+      await api.resourceGroups.create(resourceGroupForm);
+      showSuccess('Resource group created successfully');
+      setShowResourceGroupModal(false);
+      resetResourceGroupForm();
+      const [groupsRes, statsRes] = await Promise.all([
+        api.resourceGroups.list(),
+        api.resourceGroups.getStats(),
+      ]);
+      setResourceGroups(groupsRes.data);
+      setResourceGroupStats(statsRes.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to create resource group');
+    }
+  };
+
+  const handleUpdateResourceGroup = async () => {
+    if (!editingResourceGroup) return;
+    try {
+      await api.resourceGroups.update(editingResourceGroup.id, {
+        display_name: resourceGroupForm.display_name || undefined,
+        description: resourceGroupForm.description || undefined,
+        is_enabled: resourceGroupForm.is_enabled,
+        sort_order: resourceGroupForm.sort_order,
+      });
+      showSuccess('Resource group updated successfully');
+      setShowResourceGroupModal(false);
+      setEditingResourceGroup(null);
+      resetResourceGroupForm();
+      const groupsRes = await api.resourceGroups.list();
+      setResourceGroups(groupsRes.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to update resource group');
+    }
+  };
+
+  const handleDeleteResourceGroup = async (groupId: number) => {
+    if (!confirm('Are you sure you want to delete this resource group?')) return;
+    try {
+      await api.resourceGroups.delete(groupId);
+      showSuccess('Resource group deleted successfully');
+      const [groupsRes, statsRes] = await Promise.all([
+        api.resourceGroups.list(),
+        api.resourceGroups.getStats(),
+      ]);
+      setResourceGroups(groupsRes.data);
+      setResourceGroupStats(statsRes.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to delete resource group');
+    }
+  };
+
+  const handleToggleResourceGroupEnabled = async (group: ResourceGroup) => {
+    try {
+      await api.resourceGroups.update(group.id, { is_enabled: !group.is_enabled });
+      showSuccess(`Resource group ${group.is_enabled ? 'disabled' : 'enabled'} successfully`);
+      const groupsRes = await api.resourceGroups.list();
+      setResourceGroups(groupsRes.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to toggle resource group');
+    }
+  };
+
+  const handleGenerateResourceGroups = async () => {
+    if (!confirm('Generate default resource groups from API endpoints? This will create groups based on API path structure.')) return;
+    try {
+      const res = await api.resourceGroups.generate(false);
+      showSuccess(res.data.message);
+      const [groupsRes, statsRes] = await Promise.all([
+        api.resourceGroups.list(),
+        api.resourceGroups.getStats(),
+      ]);
+      setResourceGroups(groupsRes.data);
+      setResourceGroupStats(statsRes.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to generate resource groups');
+    }
+  };
+
+  const resetResourceGroupForm = () => {
+    setResourceGroupForm({
+      group_key: '',
+      display_name: '',
+      description: '',
+      is_enabled: true,
+      sort_order: 0,
+    });
+  };
+
+  const openResourceGroupModal = (group?: ResourceGroup) => {
+    if (group) {
+      setEditingResourceGroup(group);
+      setResourceGroupForm({
+        group_key: group.group_key,
+        display_name: group.display_name || '',
+        description: group.description || '',
+        is_enabled: group.is_enabled,
+        sort_order: group.sort_order,
+      });
+    } else {
+      setEditingResourceGroup(null);
+      resetResourceGroupForm();
+    }
+    setShowResourceGroupModal(true);
+  };
+
   // Toggle edit mode
   const handleToggleEditMode = async () => {
     try {
@@ -575,6 +703,7 @@ export default function SecurityPage() {
             {[
               { id: 'users' as TabType, label: 'Users', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
               { id: 'roles' as TabType, label: 'Roles', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
+              { id: 'toolGroups' as TabType, label: 'Tool Groups', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10' },
               { id: 'settings' as TabType, label: 'Settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
               { id: 'ldap' as TabType, label: 'LDAP', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
             ].map((tab) => (
@@ -924,6 +1053,147 @@ export default function SecurityPage() {
                   {ldapConfigs.length === 0 && (
                     <div className="text-center py-8 text-gray-500">
                       No LDAP configurations found. Click "Add LDAP Config" to create one.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Tool Groups Tab */}
+            {activeTab === 'toolGroups' && (
+              <div className="space-y-6">
+                {/* Stats Cards */}
+                {resourceGroupStats && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-white rounded-lg p-4 border border-gray-200 shadow">
+                      <p className="text-sm font-medium text-gray-500">Total Groups</p>
+                      <p className="text-2xl font-bold text-gray-900">{resourceGroupStats.total_groups}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 border border-gray-200 shadow">
+                      <p className="text-sm font-medium text-gray-500">Enabled Groups</p>
+                      <p className="text-2xl font-bold text-green-600">{resourceGroupStats.enabled_groups}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 border border-gray-200 shadow">
+                      <p className="text-sm font-medium text-gray-500">Mapped Operations</p>
+                      <p className="text-2xl font-bold text-blue-600">{resourceGroupStats.mapped_operations}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 border border-gray-200 shadow">
+                      <p className="text-sm font-medium text-gray-500">Total Operations</p>
+                      <p className="text-2xl font-bold text-gray-600">{resourceGroupStats.total_operations}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">MCP Tool Groups</h3>
+                    <p className="text-sm text-gray-600">
+                      Group API operations into consolidated MCP tools for easier usage
+                    </p>
+                  </div>
+                  <div className="flex space-x-3">
+                    {resourceGroups.length === 0 && (
+                      <button
+                        onClick={handleGenerateResourceGroups}
+                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition flex items-center"
+                      >
+                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        Auto-Generate Groups
+                      </button>
+                    )}
+                    <button
+                      onClick={() => openResourceGroupModal()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center"
+                    >
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                      Add Custom Group
+                    </button>
+                  </div>
+                </div>
+
+                {/* Explanation Card */}
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                  <div className="flex">
+                    <svg className="h-5 w-5 text-blue-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">Tool Consolidation</p>
+                      <p className="text-sm text-blue-700 mt-1">
+                        Instead of exposing {resourceGroupStats?.total_operations || 638} individual MCP tools, operations are grouped by resource type.
+                        Each group becomes a single MCP tool with an "operation" parameter to select the specific action.
+                        This makes the tool list more manageable for LLM usage.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Groups List */}
+                <div className="grid gap-4">
+                  {resourceGroups.map((group) => (
+                    <div key={group.id} className={`bg-white rounded-lg p-4 border shadow ${group.is_enabled ? 'border-gray-200' : 'border-gray-300 opacity-60'}`}>
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <h4 className="text-md font-medium text-gray-900 font-mono">{group.group_key}</h4>
+                            {group.is_custom && (
+                              <span className="px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded">Custom</span>
+                            )}
+                            {!group.is_enabled && (
+                              <span className="px-2 py-0.5 text-xs bg-gray-200 text-gray-600 rounded">Disabled</span>
+                            )}
+                          </div>
+                          {group.display_name && (
+                            <p className="text-sm text-gray-700">{group.display_name}</p>
+                          )}
+                          {group.description && (
+                            <p className="text-xs text-gray-500 mt-1">{group.description}</p>
+                          )}
+                          <p className="text-xs text-gray-400 mt-2">
+                            {group.operations_count} operations
+                          </p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleToggleResourceGroupEnabled(group)}
+                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                              group.is_enabled ? 'bg-blue-600' : 'bg-gray-200'
+                            }`}
+                            role="switch"
+                            aria-checked={group.is_enabled}
+                            title={group.is_enabled ? 'Disable group' : 'Enable group'}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                group.is_enabled ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <button
+                            onClick={() => openResourceGroupModal(group)}
+                            className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                          >
+                            Edit
+                          </button>
+                          {group.is_custom && (
+                            <button
+                              onClick={() => handleDeleteResourceGroup(group.id)}
+                              className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {resourceGroups.length === 0 && (
+                    <div className="text-center py-8 text-gray-500 bg-white rounded-lg border border-gray-200">
+                      No resource groups found. Click "Auto-Generate Groups" to create default groups based on API structure.
                     </div>
                   )}
                 </div>
@@ -1553,6 +1823,85 @@ export default function SecurityPage() {
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
                   Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Resource Group Modal */}
+        {showResourceGroupModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md border border-gray-200 shadow-xl">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                {editingResourceGroup ? 'Edit Resource Group' : 'Create Resource Group'}
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Group Key</label>
+                  <input
+                    type="text"
+                    value={resourceGroupForm.group_key}
+                    onChange={(e) => setResourceGroupForm({ ...resourceGroupForm, group_key: e.target.value })}
+                    disabled={!!editingResourceGroup}
+                    placeholder="e.g., analyze_fabrics"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900 disabled:opacity-50 disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Format: api_name_resource (e.g., analyze_fabrics)</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
+                  <input
+                    type="text"
+                    value={resourceGroupForm.display_name}
+                    onChange={(e) => setResourceGroupForm({ ...resourceGroupForm, display_name: e.target.value })}
+                    placeholder="e.g., Fabrics (analyze)"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  <textarea
+                    value={resourceGroupForm.description}
+                    onChange={(e) => setResourceGroupForm({ ...resourceGroupForm, description: e.target.value })}
+                    placeholder="Description shown in the MCP tool"
+                    rows={3}
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sort Order</label>
+                  <input
+                    type="number"
+                    value={resourceGroupForm.sort_order}
+                    onChange={(e) => setResourceGroupForm({ ...resourceGroupForm, sort_order: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={resourceGroupForm.is_enabled}
+                      onChange={(e) => setResourceGroupForm({ ...resourceGroupForm, is_enabled: e.target.checked })}
+                      className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Enabled</span>
+                  </label>
+                </div>
+              </div>
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={() => { setShowResourceGroupModal(false); setEditingResourceGroup(null); resetResourceGroupForm(); }}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 border border-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={editingResourceGroup ? handleUpdateResourceGroup : handleCreateResourceGroup}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  {editingResourceGroup ? 'Save Changes' : 'Create Group'}
                 </button>
               </div>
             </div>
