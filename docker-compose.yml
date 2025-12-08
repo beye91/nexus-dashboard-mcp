@@ -121,6 +121,12 @@ services:
       - certs:/app/certs:ro
     restart: unless-stopped
     command: ["sh", "/app/scripts/start-web-api.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsk https://localhost:8444/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # Next.js Web UI (HTTPS)
   web-ui:
@@ -139,7 +145,10 @@ services:
       - SSL_ENABLED=true
       - SSL_CERTFILE=/app/certs/server.crt
       - SSL_KEYFILE=/app/certs/server.key
-      - PORT=7443
+      # External HTTPS port
+      - PORT=${WEB_UI_PORT:-7443}
+      # Internal Next.js port (configurable to avoid conflicts with other services like Grafana)
+      - INTERNAL_PORT=${WEB_UI_INTERNAL_PORT:-7100}
       # Allow self-signed certificates for internal communication
       - NODE_TLS_REJECT_UNAUTHORIZED=0
     volumes:

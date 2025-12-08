@@ -5,11 +5,12 @@
  * and creates an HTTPS server that proxies requests to it.
  *
  * Environment Variables:
- *   SSL_ENABLED    - Enable HTTPS (default: true)
- *   SSL_CERTFILE   - Path to SSL certificate (default: /app/certs/server.crt)
- *   SSL_KEYFILE    - Path to SSL private key (default: /app/certs/server.key)
- *   PORT           - External HTTPS port (default: 7443)
- *   HOSTNAME       - Server hostname (default: 0.0.0.0)
+ *   SSL_ENABLED      - Enable HTTPS (default: true)
+ *   SSL_CERTFILE     - Path to SSL certificate (default: /app/certs/server.crt)
+ *   SSL_KEYFILE      - Path to SSL private key (default: /app/certs/server.key)
+ *   PORT             - External HTTPS port (default: 7443)
+ *   INTERNAL_PORT    - Internal Next.js port (default: 7100)
+ *   HOSTNAME         - Server hostname (default: 0.0.0.0)
  */
 
 // IMPORTANT: Set this BEFORE requiring any modules to allow self-signed certs
@@ -25,7 +26,7 @@ const httpProxy = require('http-proxy');
 const sslEnabled = process.env.SSL_ENABLED === 'true';
 const hostname = process.env.HOSTNAME || '0.0.0.0';
 const externalPort = parseInt(process.env.PORT || '7443', 10);
-const internalPort = 3000; // Next.js standalone runs on this port internally
+const internalPort = parseInt(process.env.INTERNAL_PORT || '7100', 10);
 
 // Create proxy to forward requests to Next.js
 const proxy = httpProxy.createProxyServer({
@@ -43,7 +44,7 @@ proxy.on('error', (err, req, res) => {
 });
 
 // Start Next.js standalone server on internal port
-console.log('Starting Next.js standalone server...');
+console.log(`Starting Next.js standalone server on internal port ${internalPort}...`);
 const nextProcess = spawn('node', ['server.js'], {
   env: {
     ...process.env,

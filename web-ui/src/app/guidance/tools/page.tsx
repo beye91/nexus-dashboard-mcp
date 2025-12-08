@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
-import Footer from '@/components/Footer';
 import { api } from '@/lib/api-client';
 import type { ToolDescriptionOverride } from '@/types';
 
@@ -112,20 +111,19 @@ export default function ToolOverridesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="min-h-screen bg-gray-50">
         <Navigation />
-        <div className="flex-grow flex items-center justify-center py-12">
+        <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
-        <Footer />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50">
       <Navigation />
-      <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
           <Link href="/guidance" className="text-blue-600 hover:text-blue-700">
             &larr; Back to Guidance
@@ -344,8 +342,6 @@ export default function ToolOverridesPage() {
         </div>
       )}
       </main>
-
-      <Footer />
     </div>
   );
 }

@@ -4,18 +4,6 @@ import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Navigation from '@/components/Navigation';
-import Footer from '@/components/Footer';
-
-// Helper function to create slug from heading text
-function slugify(text: string): string {
-  return text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^\w\-]+/g, '')
-    .replace(/\-\-+/g, '-');
-}
 
 export default function DocsPage() {
   const [markdown, setMarkdown] = useState<string>('');
@@ -25,6 +13,7 @@ export default function DocsPage() {
   useEffect(() => {
     async function fetchDocs() {
       try {
+        // Use relative URL - Next.js rewrites will proxy to the backend
         const response = await fetch('/api/docs');
         if (!response.ok) {
           throw new Error('Failed to load documentation');
@@ -43,10 +32,10 @@ export default function DocsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50">
       <Navigation />
 
-      <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Documentation</h2>
           <p className="text-gray-600">
@@ -65,46 +54,30 @@ export default function DocsPage() {
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow p-8">
-            <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-li:text-gray-700 prose-a:text-blue-600 prose-blockquote:text-gray-700 prose-th:text-gray-900 prose-td:text-gray-700 [&_pre]:!bg-[#1a1a2e] [&_pre]:!p-4 [&_pre_code]:!bg-transparent [&_pre_code]:!text-[#e0e0e0] [&_pre_code]:!p-0">
+            <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-li:text-gray-700 prose-a:text-blue-600 prose-code:text-gray-800 prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-blockquote:text-gray-700 prose-th:text-gray-900 prose-td:text-gray-700">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
-                  h1: ({ children }) => {
-                    const text = String(children);
-                    const id = slugify(text);
-                    return (
-                      <h1 id={id} className="text-3xl font-bold text-gray-900 mb-4 mt-8 pb-2 border-b border-gray-200 scroll-mt-20">
-                        {children}
-                      </h1>
-                    );
-                  },
-                  h2: ({ children }) => {
-                    const text = String(children);
-                    const id = slugify(text);
-                    return (
-                      <h2 id={id} className="text-2xl font-bold text-gray-900 mb-4 mt-8 scroll-mt-20">
-                        {children}
-                      </h2>
-                    );
-                  },
-                  h3: ({ children }) => {
-                    const text = String(children);
-                    const id = slugify(text);
-                    return (
-                      <h3 id={id} className="text-xl font-bold text-gray-900 mb-3 mt-6 scroll-mt-20">
-                        {children}
-                      </h3>
-                    );
-                  },
-                  h4: ({ children }) => {
-                    const text = String(children);
-                    const id = slugify(text);
-                    return (
-                      <h4 id={id} className="text-lg font-bold text-gray-900 mb-2 mt-4 scroll-mt-20">
-                        {children}
-                      </h4>
-                    );
-                  },
+                  h1: ({ children }) => (
+                    <h1 className="text-3xl font-bold text-gray-900 mb-4 mt-8 pb-2 border-b border-gray-200">
+                      {children}
+                    </h1>
+                  ),
+                  h2: ({ children }) => (
+                    <h2 className="text-2xl font-bold text-gray-900 mb-4 mt-8">
+                      {children}
+                    </h2>
+                  ),
+                  h3: ({ children }) => (
+                    <h3 className="text-xl font-bold text-gray-900 mb-3 mt-6">
+                      {children}
+                    </h3>
+                  ),
+                  h4: ({ children }) => (
+                    <h4 className="text-lg font-bold text-gray-900 mb-2 mt-4">
+                      {children}
+                    </h4>
+                  ),
                   p: ({ children }) => (
                     <p className="text-gray-700 leading-7 mb-4">
                       {children}
@@ -132,29 +105,26 @@ export default function DocsPage() {
                         {children}
                       </code>
                     ) : (
-                      <code className="block text-[#e0e0e0] font-mono text-sm whitespace-pre bg-transparent" {...props}>
+                      <code className={className} {...props}>
                         {children}
                       </code>
                     );
                   },
                   pre: ({ children }) => (
-                    <pre className="bg-[#1a1a2e] text-[#e0e0e0] p-4 rounded-lg overflow-x-auto mb-4 font-mono text-sm leading-relaxed border-0">
+                    <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-4">
                       {children}
                     </pre>
                   ),
-                  a: ({ href, children }) => {
-                    // Check if it's an internal anchor link
-                    const isAnchor = href?.startsWith('#');
-                    return (
-                      <a
-                        href={href}
-                        className="text-blue-600 hover:underline"
-                        {...(!isAnchor && { target: "_blank", rel: "noopener noreferrer" })}
-                      >
-                        {children}
-                      </a>
-                    );
-                  },
+                  a: ({ href, children }) => (
+                    <a
+                      href={href}
+                      className="text-blue-600 hover:underline"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {children}
+                    </a>
+                  ),
                   strong: ({ children }) => (
                     <strong className="font-semibold text-gray-900">
                       {children}
@@ -213,8 +183,6 @@ export default function DocsPage() {
           </div>
         )}
       </main>
-
-      <Footer />
     </div>
   );
 }

@@ -25,25 +25,14 @@ class AuditLogger:
         self.db = get_db()
 
     async def get_cluster_id(self) -> Optional[int]:
-        """Get cluster ID from default cluster name.
-
-        Returns:
-            Cluster ID or None if not found
-        """
-        return await self._get_cluster_id_by_name(self.cluster_name)
-
-    async def _get_cluster_id_by_name(self, cluster_name: str) -> Optional[int]:
         """Get cluster ID from cluster name.
-
-        Args:
-            cluster_name: Name of the cluster to look up
 
         Returns:
             Cluster ID or None if not found
         """
         async with self.db.session() as session:
             result = await session.execute(
-                select(Cluster.id).where(Cluster.name == cluster_name)
+                select(Cluster.id).where(Cluster.name == self.cluster_name)
             )
             cluster_id = result.scalar_one_or_none()
             return cluster_id
@@ -58,8 +47,6 @@ class AuditLogger:
         response_body: Optional[Dict[str, Any]] = None,
         error_message: Optional[str] = None,
         user_id: Optional[str] = None,
-        client_ip: Optional[str] = None,
-        cluster_name: Optional[str] = None,
     ):
         """Log an operation to the audit log.
 
@@ -72,19 +59,14 @@ class AuditLogger:
             response_body: Response body as dict
             error_message: Error message if operation failed
             user_id: User identifier (if available)
-            client_ip: Client IP address (if available)
-            cluster_name: Name of the cluster used (overrides default)
         """
         try:
-            # Use provided cluster_name or fall back to default
-            lookup_name = cluster_name or self.cluster_name
-            cluster_id = await self._get_cluster_id_by_name(lookup_name)
+            cluster_id = await self.get_cluster_id()
 
             async with self.db.session() as session:
                 audit_entry = AuditLog(
                     cluster_id=cluster_id,
                     user_id=user_id,
-                    client_ip=client_ip,
                     operation_id=operation_id,
                     http_method=method.upper(),
                     path=path,
@@ -98,17 +80,16 @@ class AuditLogger:
                 await session.commit()
 
                 # Log to application logger as well
-                user_info = f" [user: {user_id}]" if user_id else ""
                 if error_message:
                     logger.error(
-                        f"Audit: {method} {path}{user_info} - Error: {error_message}"
+                        f"Audit: {method} {path} - Error: {error_message}"
                     )
                 elif response_status:
                     logger.info(
-                        f"Audit: {method} {path}{user_info} - Status: {response_status}"
+                        f"Audit: {method} {path} - Status: {response_status}"
                     )
                 else:
-                    logger.info(f"Audit: {method} {path}{user_info} - Logged")
+                    logger.info(f"Audit: {method} {path} - Logged")
 
         except Exception as e:
             # Don't let audit logging failures break the application

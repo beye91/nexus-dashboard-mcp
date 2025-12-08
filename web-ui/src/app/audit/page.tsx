@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Navigation from '@/components/Navigation';
-import Footer from '@/components/Footer';
 import { api } from '@/lib/api-client';
 import type { AuditLog, AuditStats } from '@/types';
 
@@ -138,10 +137,10 @@ export default function AuditPage() {
   const totalPages = Math.ceil(logs.length / itemsPerPage);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50">
       <Navigation />
 
-      <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8 flex justify-between items-center">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Audit Logs</h2>
@@ -322,10 +321,10 @@ export default function AuditPage() {
                         Timestamp
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        User
+                        Cluster
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Cluster
+                        Cluster Endpoint
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Client IP
@@ -354,12 +353,12 @@ export default function AuditPage() {
                           {new Date(log.timestamp).toLocaleString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {log.user_id || '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {log.cluster_name || '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {log.cluster_url || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
                           {log.client_ip || '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -478,8 +477,6 @@ export default function AuditPage() {
           </>
         )}
       </main>
-
-      <Footer />
     </div>
   );
 }

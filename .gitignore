@@ -57,13 +57,8 @@ web/out/
 web/node_modules/
 web/.turbo
 web/build
-web-ui/node_modules/
-web-ui/.next/
 
 # Misc
 *.bak
 *.tmp
 .cache/
-
-# Documentation (private)
-docs/

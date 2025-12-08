@@ -54,6 +54,7 @@ EXPOSE 7443
 
 # Environment defaults
 ENV PORT=7443
+ENV INTERNAL_PORT=7100
 ENV HOSTNAME="0.0.0.0"
 ENV SSL_ENABLED=true
 ENV SSL_CERTFILE=/app/certs/server.crt

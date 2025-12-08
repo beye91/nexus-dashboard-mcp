@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
-import Footer from '@/components/Footer';
 import { api } from '@/lib/api-client';
 import type { Workflow, WorkflowStep } from '@/types';
 
@@ -188,24 +187,23 @@ export default function WorkflowDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="min-h-screen bg-gray-50">
         <Navigation />
-        <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center py-12">
             <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
             <p className="mt-2 text-gray-600">Loading workflow...</p>
           </div>
         </main>
-        <Footer />
       </div>
     );
   }
 
   if (!workflow) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="min-h-screen bg-gray-50">
         <Navigation />
-        <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center py-12">
             <p className="text-red-600">Workflow not found</p>
             <button
@@ -216,16 +214,15 @@ export default function WorkflowDetailPage() {
             </button>
           </div>
         </main>
-        <Footer />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50">
       <Navigation />
 
-      <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <button
             onClick={() => router.push('/guidance/workflows')}
@@ -565,8 +562,6 @@ export default function WorkflowDetailPage() {
           </div>
         </div>
       )}
-
-      <Footer />
     </div>
   );
 }

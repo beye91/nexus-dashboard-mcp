@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
-import Footer from '@/components/Footer';
 import { api } from '@/lib/api-client';
 import type { SystemHealth, SystemStats } from '@/types';
 
@@ -114,10 +113,10 @@ export default function HealthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50">
       <Navigation />
 
-      <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8 flex justify-between items-center">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">System Health</h2>
@@ -272,8 +271,6 @@ export default function HealthPage() {
           </div>
         ) : null}
       </main>
-
-      <Footer />
     </div>
   );
 }
