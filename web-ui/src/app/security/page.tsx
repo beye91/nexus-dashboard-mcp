@@ -746,12 +746,14 @@ export default function SecurityPage() {
                             )}
                           </div>
                           <p className="text-gray-600 text-sm mt-1">{role.description || 'No description'}</p>
-                          <p className="text-gray-500 text-xs mt-2">
-                            {role.operations_count} operations assigned
-                          </p>
-                          {role.tool_profile && (
-                            <p className="text-gray-500 text-xs mt-1">
+                          {role.tool_profile ? (
+                            <p className="text-gray-500 text-xs mt-2">
                               Tool Profile: <span className="font-medium text-blue-600">{role.tool_profile.name}</span>
+                              {' '}({toolProfiles.find(p => p.id === role.tool_profile_id)?.operations_count ?? '?'} tools)
+                            </p>
+                          ) : (
+                            <p className="text-gray-500 text-xs mt-2">
+                              {role.operations_count} operations assigned
                             </p>
                           )}
                         </div>
