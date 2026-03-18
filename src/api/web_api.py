@@ -210,6 +210,7 @@ class RoleCreate(BaseModel):
     description: Optional[str] = None
     edit_mode_enabled: bool = False
     operations: Optional[List[str]] = None
+    tool_profile_id: Optional[int] = None
 
 
 class RoleUpdate(BaseModel):
@@ -217,6 +218,7 @@ class RoleUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     edit_mode_enabled: Optional[bool] = None
+    tool_profile_id: Optional[int] = None
 
 
 class RoleResponse(BaseModel):
@@ -228,6 +230,8 @@ class RoleResponse(BaseModel):
     is_system_role: bool
     operations_count: int
     operations: Optional[List[str]] = None
+    tool_profile_id: Optional[int] = None
+    tool_profile: Optional[dict] = None
     created_at: str
     updated_at: str
 
@@ -1683,6 +1687,8 @@ async def list_roles(
             is_system_role=r.is_system_role,
             operations_count=len(r.operations) if r.operations else 0,
             operations=[op.operation_name for op in r.operations] if r.operations else [],
+            tool_profile_id=r.tool_profile_id,
+            tool_profile={"id": r.tool_profile.id, "name": r.tool_profile.name} if r.tool_profile else None,
             created_at=r.created_at.isoformat(),
             updated_at=r.updated_at.isoformat(),
         )
@@ -1704,7 +1710,11 @@ async def create_role(
             operations=role_data.operations,
         )
 
-        # Reload to get operations
+        # Set tool profile if provided
+        if role_data.tool_profile_id is not None:
+            await role_service.set_role_tool_profile(role.id, role_data.tool_profile_id)
+
+        # Reload to get operations and tool_profile
         role = await role_service.get_role(role.id)
 
         return RoleResponse(
@@ -1715,6 +1725,8 @@ async def create_role(
             is_system_role=role.is_system_role,
             operations_count=len(role.operations) if role.operations else 0,
             operations=[op.operation_name for op in role.operations] if role.operations else [],
+            tool_profile_id=role.tool_profile_id,
+            tool_profile={"id": role.tool_profile.id, "name": role.tool_profile.name} if role.tool_profile else None,
             created_at=role.created_at.isoformat(),
             updated_at=role.updated_at.isoformat(),
         )
@@ -1741,6 +1753,8 @@ async def get_role(
         is_system_role=role.is_system_role,
         operations_count=len(role.operations) if role.operations else 0,
         operations=[op.operation_name for op in role.operations] if role.operations else [],
+        tool_profile_id=role.tool_profile_id,
+        tool_profile={"id": role.tool_profile.id, "name": role.tool_profile.name} if role.tool_profile else None,
         created_at=role.created_at.isoformat(),
         updated_at=role.updated_at.isoformat(),
     )
@@ -1759,6 +1773,7 @@ async def update_role(
             name=role_data.name,
             description=role_data.description,
             edit_mode_enabled=role_data.edit_mode_enabled,
+            tool_profile_id=role_data.tool_profile_id,
         )
 
         if not role:
@@ -1775,6 +1790,8 @@ async def update_role(
             is_system_role=role.is_system_role,
             operations_count=len(role.operations) if role.operations else 0,
             operations=[op.operation_name for op in role.operations] if role.operations else [],
+            tool_profile_id=role.tool_profile_id,
+            tool_profile={"id": role.tool_profile.id, "name": role.tool_profile.name} if role.tool_profile else None,
             created_at=role.created_at.isoformat(),
             updated_at=role.updated_at.isoformat(),
         )
@@ -1819,6 +1836,42 @@ async def set_role_operations(
         is_system_role=role.is_system_role,
         operations_count=len(role.operations) if role.operations else 0,
         operations=[op.operation_name for op in role.operations] if role.operations else [],
+        tool_profile_id=role.tool_profile_id,
+        tool_profile={"id": role.tool_profile.id, "name": role.tool_profile.name} if role.tool_profile else None,
+        created_at=role.created_at.isoformat(),
+        updated_at=role.updated_at.isoformat(),
+    )
+
+
+class SetRoleToolProfileRequest(BaseModel):
+    """Request model for setting a role's tool profile."""
+    tool_profile_id: Optional[int] = None  # None clears the assignment
+
+
+@app.put("/api/roles/{role_id}/tool-profile")
+async def set_role_tool_profile(
+    role_id: int,
+    data: SetRoleToolProfileRequest,
+    _admin: User = Depends(require_superuser),
+):
+    """Set or clear the tool profile for a role (superuser only).
+
+    Pass tool_profile_id=null to clear the assignment.
+    """
+    role = await role_service.set_role_tool_profile(role_id, data.tool_profile_id)
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    return RoleResponse(
+        id=role.id,
+        name=role.name,
+        description=role.description,
+        edit_mode_enabled=role.edit_mode_enabled,
+        is_system_role=role.is_system_role,
+        operations_count=len(role.operations) if role.operations else 0,
+        operations=[op.operation_name for op in role.operations] if role.operations else [],
+        tool_profile_id=role.tool_profile_id,
+        tool_profile={"id": role.tool_profile.id, "name": role.tool_profile.name} if role.tool_profile else None,
         created_at=role.created_at.isoformat(),
         updated_at=role.updated_at.isoformat(),
     )

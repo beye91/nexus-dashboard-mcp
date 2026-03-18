@@ -162,6 +162,8 @@ export interface Role {
   is_system_role: boolean;
   operations_count: number;
   operations?: string[];
+  tool_profile_id?: number | null;
+  tool_profile?: { id: number; name: string } | null;
   created_at: string;
   updated_at: string;
 }
@@ -171,12 +173,14 @@ export interface CreateRoleRequest {
   description?: string;
   edit_mode_enabled?: boolean;
   operations?: string[];
+  tool_profile_id?: number | null;
 }
 
 export interface UpdateRoleRequest {
   name?: string;
   description?: string;
   edit_mode_enabled?: boolean;
+  tool_profile_id?: number | null;
 }
 
 // ==================== Operation Types (for searchable dropdown) ====================

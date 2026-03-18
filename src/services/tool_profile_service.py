@@ -5,9 +5,10 @@ determines which tools/operations an authenticated MCP user can access.
 
 Resolution priority:
   1. Tool profile assigned to user (even for superusers)
-  2. Superuser with no profile -> all tools
-  3. Role-based operations from assigned roles
-  4. No profile and no roles -> no tools (empty list)
+  2. Role-level tool profiles (union of all role profile operations)
+  3. Superuser with no profile -> all tools
+  4. Role-based operations from assigned roles
+  5. No profile and no roles -> no tools (empty list)
 """
 
 import logging
@@ -329,9 +330,10 @@ class ToolProfileService:
 
         Resolution order:
           1. User has a tool profile -> filter to profile operations
-          2. User is superuser (no profile) -> all tools
-          3. User has role operations -> filter to role operations
-          4. No profile, no roles, not superuser -> no tools
+          2. Role-level tool profiles (union of all role profile operations)
+          3. User is superuser (no profile) -> all tools
+          4. User has role operations -> filter to role operations
+          5. No profile, no roles, not superuser -> no tools
 
         Args:
             user: Authenticated User ORM instance
@@ -364,12 +366,37 @@ class ToolProfileService:
                     "falling through to role-based filtering"
                 )
 
-        # 2. Superuser without an active profile -> full access
+        # 2. Role-level tool profiles (union of all role profile operations)
+        if hasattr(user, 'roles') and user.roles:
+            has_full_access = False
+            role_profile_ops = set()
+            for role in user.roles:
+                if hasattr(role, 'tool_profile') and role.tool_profile and role.tool_profile.is_active:
+                    profile = role.tool_profile
+                    # Full Access profile (max_tools=0 with no operations)
+                    if profile.max_tools == 0 and not profile.operations:
+                        has_full_access = True
+                        break
+                    role_profile_ops.update(profile.get_operation_names())
+
+            if has_full_access:
+                logger.debug(f"User '{user.username}' has Full Access via role profile")
+                return all_tools
+
+            if role_profile_ops:
+                filtered = [t for t in all_tools if t.get("name") in role_profile_ops]
+                logger.debug(
+                    f"Role profile filter: {len(all_tools)} -> {len(filtered)} tools "
+                    f"for user '{user.username}'"
+                )
+                return filtered
+
+        # 3. Superuser without an active profile -> full access
         if user.is_superuser:
             logger.debug(f"User '{user.username}' is superuser, returning all tools")
             return all_tools
 
-        # 3. Role-based filtering
+        # 4. Role-based filtering
         role_ops = user.get_all_operations()
         if not role_ops:
             logger.info(
@@ -383,3 +410,4 @@ class ToolProfileService:
             f"for user '{user.username}'"
         )
         return filtered
+

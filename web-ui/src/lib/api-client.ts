@@ -170,6 +170,8 @@ export const api = {
       apiClient.delete(`/api/roles/${id}`),
     setOperations: (id: number, data: SetRoleOperationsRequest) =>
       apiClient.put<Role>(`/api/roles/${id}/operations`, data),
+    setToolProfile: (id: number, toolProfileId: number | null) =>
+      apiClient.put<Role>(`/api/roles/${id}/tool-profile`, { tool_profile_id: toolProfileId }),
   },
 
   // Tool Profiles

@@ -11,6 +11,7 @@ from src.config.database import Base
 
 if TYPE_CHECKING:
     from src.models.user import User
+    from src.models.tool_profile import ToolProfile
 
 
 class Role(Base):
@@ -26,6 +27,7 @@ class Role(Base):
     is_system_role = Column(Boolean, default=False)  # Built-in vs user-created
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    tool_profile_id = Column(Integer, ForeignKey("tool_profiles.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # Relationships
     users = relationship(
@@ -40,6 +42,7 @@ class Role(Base):
         cascade="all, delete-orphan",
         lazy="selectin"
     )
+    tool_profile = relationship("ToolProfile", lazy="selectin")
 
     def __repr__(self) -> str:
         return f"<Role(name='{self.name}', edit_mode={self.edit_mode_enabled})>"
@@ -63,6 +66,8 @@ class Role(Base):
             "operations_count": len(self.operations) if self.operations else 0,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "tool_profile_id": self.tool_profile_id,
+            "tool_profile": {"id": self.tool_profile.id, "name": self.tool_profile.name} if self.tool_profile else None,
         }
         if include_operations and self.operations:
             data["operations"] = [op.operation_name for op in self.operations]

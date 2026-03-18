@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Navigation from '@/components/Navigation';
 import SearchableOperationsDropdown from '@/components/SearchableOperationsDropdown';
 import { api } from '@/lib/api-client';
-import type { SecurityConfig, User, Role, Cluster, CreateUserRequest, CreateRoleRequest, LDAPConfig, LDAPConfigCreate, LDAPGroup, LDAPRoleMapping, LDAPClusterMapping } from '@/types';
+import type { SecurityConfig, User, Role, Cluster, CreateUserRequest, CreateRoleRequest, LDAPConfig, LDAPConfigCreate, LDAPGroup, LDAPRoleMapping, LDAPClusterMapping, ToolProfile } from '@/types';
 
 type TabType = 'users' | 'roles' | 'settings' | 'ldap';
 
@@ -41,6 +41,9 @@ export default function SecurityPage() {
   // Cluster state
   const [clusters, setClusters] = useState<Cluster[]>([]);
 
+  // Tool profiles state
+  const [toolProfiles, setToolProfiles] = useState<ToolProfile[]>([]);
+
   // API Token state
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
@@ -57,11 +60,12 @@ export default function SecurityPage() {
     cluster_ids: [],
   });
 
-  const [roleForm, setRoleForm] = useState<CreateRoleRequest>({
+  const [roleForm, setRoleForm] = useState<CreateRoleRequest & { tool_profile_id?: number | null }>({
     name: '',
     description: '',
     edit_mode_enabled: false,
     operations: [],
+    tool_profile_id: null,
   });
 
   const [ldapForm, setLdapForm] = useState<LDAPConfigCreate>({
@@ -101,8 +105,12 @@ export default function SecurityPage() {
           setRoles(rolesRes.data);
           setClusters(clustersRes.data);
         } else if (activeTab === 'roles') {
-          const rolesRes = await api.roles.list();
+          const [rolesRes, profilesRes] = await Promise.all([
+            api.roles.list(),
+            api.toolProfiles.list(),
+          ]);
           setRoles(rolesRes.data);
+          setToolProfiles(profilesRes.data);
         } else if (activeTab === 'settings') {
           const [configRes, editModeRes, usersRes, rolesRes] = await Promise.all([
             api.security.getConfig(),
@@ -270,7 +278,10 @@ export default function SecurityPage() {
   // Role CRUD operations
   const handleCreateRole = async () => {
     try {
-      await api.roles.create(roleForm);
+      await api.roles.create({
+        ...roleForm,
+        tool_profile_id: roleForm.tool_profile_id,
+      });
       showSuccess('Role created successfully');
       setShowRoleModal(false);
       resetRoleForm();
@@ -288,6 +299,7 @@ export default function SecurityPage() {
         name: roleForm.name,
         description: roleForm.description,
         edit_mode_enabled: roleForm.edit_mode_enabled,
+        tool_profile_id: roleForm.tool_profile_id,
       });
       await api.roles.setOperations(editingRole.id, {
         operations: roleForm.operations || [],
@@ -321,6 +333,7 @@ export default function SecurityPage() {
       description: '',
       edit_mode_enabled: false,
       operations: [],
+      tool_profile_id: null,
     });
   };
 
@@ -332,6 +345,7 @@ export default function SecurityPage() {
         description: role.description || '',
         edit_mode_enabled: role.edit_mode_enabled,
         operations: role.operations || [],
+        tool_profile_id: role.tool_profile_id || null,
       });
     } else {
       setEditingRole(null);
@@ -735,6 +749,11 @@ export default function SecurityPage() {
                           <p className="text-gray-500 text-xs mt-2">
                             {role.operations_count} operations assigned
                           </p>
+                          {role.tool_profile && (
+                            <p className="text-gray-500 text-xs mt-1">
+                              Tool Profile: <span className="font-medium text-blue-600">{role.tool_profile.name}</span>
+                            </p>
+                          )}
                         </div>
                         <div className="flex space-x-2">
                           <button
@@ -1094,6 +1113,22 @@ export default function SecurityPage() {
                     <span className="text-sm text-gray-700">Enable Edit Mode for this role</span>
                   </label>
                   <p className="text-xs text-gray-500 mt-1">Users with this role can perform write operations</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tool Profile</label>
+                  <select
+                    value={roleForm.tool_profile_id ?? ''}
+                    onChange={(e) => setRoleForm({ ...roleForm, tool_profile_id: e.target.value ? Number(e.target.value) : null })}
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">No tool profile (use role operations)</option>
+                    {toolProfiles.filter(p => p.is_active).map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name} ({profile.operations_count} tools)
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Assign a tool profile to control which MCP tools users with this role can access</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Allowed Operations</label>

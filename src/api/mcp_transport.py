@@ -197,9 +197,10 @@ def filter_tools_for_user(tools: List[Dict], auth_result: AuthResult) -> List[Di
       1. Legacy token or no user context -> all tools (backward compatible)
       2. User has an active tool profile -> filter to profile operations
          (max_tools=0 with no operations = Full Access profile, returns all tools)
-      3. Superuser without a tool profile -> all tools
-      4. Role-based allowed operations -> filter to those operations
-      5. No profile, no roles -> no tools
+      3. Role-level tool profiles -> union of role profile operations
+      4. Superuser without a tool profile -> all tools
+      5. Role-based allowed operations -> filter to those operations
+      6. No profile, no roles -> no tools
 
     Args:
         tools: List of tool dictionaries from the MCP server
@@ -238,11 +239,35 @@ def filter_tools_for_user(tools: List[Dict], auth_result: AuthResult) -> List[Di
                 "falling through to role-based filtering"
             )
 
-    # 2. Superuser without an active profile -> all tools
+    # 2. Role-level tool profiles
+    if hasattr(user, 'roles') and user.roles:
+        has_full_access = False
+        role_profile_ops = set()
+        for role in user.roles:
+            if hasattr(role, 'tool_profile') and role.tool_profile and role.tool_profile.is_active:
+                profile = role.tool_profile
+                if profile.max_tools == 0 and not profile.operations:
+                    has_full_access = True
+                    break
+                role_profile_ops.update(profile.get_operation_names())
+
+        if has_full_access:
+            logger.debug(f"User '{user.username}' has Full Access via role profile")
+            return tools
+
+        if role_profile_ops:
+            filtered = [t for t in tools if t.get("name") in role_profile_ops]
+            logger.debug(
+                f"Role profile filter: {len(tools)} -> {len(filtered)} tools "
+                f"for user '{user.username}'"
+            )
+            return filtered
+
+    # 3. Superuser without an active profile -> all tools
     if user.is_superuser:
         return tools
 
-    # 3. Role-based filtering using operations from assigned roles
+    # 4. Role-based filtering using operations from assigned roles
     allowed_ops = auth_result.allowed_operations
     if not allowed_ops:
         logger.info(f"User '{user.username}' has no allowed operations")
@@ -260,6 +285,14 @@ def can_execute_tool(tool_name: str, auth_result: AuthResult) -> bool:
 
     Mirrors the priority logic of filter_tools_for_user for individual execution
     checks to ensure consistent enforcement at both listing and execution time.
+
+    Resolution priority:
+      1. Legacy token or no user context -> all tools
+      2. User's active tool profile -> profile operations
+      3. Role-level tool profiles -> union of role profile operations
+      4. Superuser without profiles -> all tools
+      5. Role-based operations -> filter
+      6. No profile, no roles -> no tools
 
     Args:
         tool_name: Name of the tool to execute
@@ -284,11 +317,21 @@ def can_execute_tool(tool_name: str, auth_result: AuthResult) -> bool:
             return tool_name in profile.get_operation_names()
         # Inactive profile -> fall through to role-based check
 
-    # 2. Superuser without an active profile -> allow all
+    # 2. Role-level tool profiles
+    if hasattr(user, 'roles') and user.roles:
+        for role in user.roles:
+            if hasattr(role, 'tool_profile') and role.tool_profile and role.tool_profile.is_active:
+                profile = role.tool_profile
+                if profile.max_tools == 0 and not profile.operations:
+                    return True
+                if tool_name in profile.get_operation_names():
+                    return True
+
+    # 3. Superuser without an active profile -> allow all
     if user.is_superuser:
         return True
 
-    # 3. Role-based check
+    # 4. Role-based check
     if auth_result.allowed_operations and tool_name in auth_result.allowed_operations:
         return True
 

@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from src.config.database import get_db
 from src.models.role import Role, RoleOperation
 from src.models.api_endpoint import APIEndpoint
+from src.models.tool_profile import ToolProfile
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +132,7 @@ class RoleService:
         name: Optional[str] = None,
         description: Optional[str] = None,
         edit_mode_enabled: Optional[bool] = None,
+        tool_profile_id: Optional[int] = None,
     ) -> Optional[Role]:
         """Update role properties.
 
@@ -139,6 +141,7 @@ class RoleService:
             name: New name (if provided)
             description: New description (if provided)
             edit_mode_enabled: New edit mode status (if provided)
+            tool_profile_id: Tool profile ID to assign (0 = clear assignment, None = no change)
 
         Returns:
             Updated Role instance or None if not found
@@ -167,6 +170,8 @@ class RoleService:
                 role.description = description
             if edit_mode_enabled is not None:
                 role.edit_mode_enabled = edit_mode_enabled
+            if tool_profile_id is not None:
+                role.tool_profile_id = tool_profile_id if tool_profile_id != 0 else None
 
             await session.commit()
             await session.refresh(role)
@@ -202,6 +207,31 @@ class RoleService:
 
             logger.info(f"Deleted role: {role.name}")
             return True
+
+    async def set_role_tool_profile(self, role_id: int, profile_id: Optional[int]) -> Optional[Role]:
+        """Set or clear the tool profile for a role.
+
+        Args:
+            role_id: Role ID
+            profile_id: Tool profile ID to assign, or None to clear
+
+        Returns:
+            Updated Role or None if not found
+        """
+        async with self.db.session() as session:
+            result = await session.execute(
+                select(Role).where(Role.id == role_id)
+            )
+            role = result.scalar_one_or_none()
+            if not role:
+                return None
+
+            role.tool_profile_id = profile_id
+            await session.commit()
+            await session.refresh(role)
+
+            logger.info(f"Set tool profile {profile_id} for role '{role.name}'")
+            return await self.get_role(role_id)
 
     # ==================== Operations Management ====================
 
