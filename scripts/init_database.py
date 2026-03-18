@@ -79,11 +79,13 @@ async def run_migrations():
 
         try:
             async with db.async_engine.begin() as conn:
-                # Execute the migration (may contain multiple statements)
-                for statement in sql.split(";"):
-                    statement = statement.strip()
-                    if statement and not statement.startswith("--"):
-                        await conn.execute(text(statement))
+                # Get the raw asyncpg connection and execute the entire
+                # migration as one block.  This avoids asyncpg's prepared-
+                # statement validation which fails when an ALTER TABLE ADD
+                # COLUMN is followed by a CREATE INDEX on that column in
+                # the same transaction.
+                raw = await conn.get_raw_connection()
+                await raw.driver_connection.execute(sql)
 
                 # Record it as applied
                 await conn.execute(
