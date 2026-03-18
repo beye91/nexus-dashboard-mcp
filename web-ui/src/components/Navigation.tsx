@@ -12,6 +12,7 @@ export default function Navigation() {
     { href: '/', label: 'Dashboard' },
     { href: '/clusters', label: 'Clusters' },
     { href: '/security', label: 'Security' },
+    { href: '/tool-profiles', label: 'Tool Profiles' },
     { href: '/audit', label: 'Audit Logs' },
     { href: '/guidance', label: 'API Guidance' },
     { href: '/health', label: 'Health' },

@@ -31,6 +31,11 @@ import type {
   WorkflowStep,
   ToolDescriptionOverride,
   SystemPromptSection,
+  ToolProfile,
+  CreateToolProfileRequest,
+  UpdateToolProfileRequest,
+  WorkflowExecution,
+  UseCase,
 } from '@/types';
 
 // Use relative URLs - Next.js rewrites will proxy to the backend
@@ -167,6 +172,24 @@ export const api = {
       apiClient.put<Role>(`/api/roles/${id}/operations`, data),
   },
 
+  // Tool Profiles
+  toolProfiles: {
+    list: () =>
+      apiClient.get<ToolProfile[]>('/api/tool-profiles'),
+    get: (id: number) =>
+      apiClient.get<ToolProfile>(`/api/tool-profiles/${id}`),
+    create: (data: CreateToolProfileRequest) =>
+      apiClient.post<ToolProfile>('/api/tool-profiles', data),
+    update: (id: number, data: UpdateToolProfileRequest) =>
+      apiClient.put<ToolProfile>(`/api/tool-profiles/${id}`, data),
+    delete: (id: number) =>
+      apiClient.delete(`/api/tool-profiles/${id}`),
+    setOperations: (id: number, operations: string[]) =>
+      apiClient.put<ToolProfile>(`/api/tool-profiles/${id}/operations`, { operations }),
+    assignToUser: (userId: number, profileId: number | null) =>
+      apiClient.put(`/api/users/${userId}/tool-profile`, { tool_profile_id: profileId }),
+  },
+
   // Operations (for searchable dropdown)
   operations: {
     list: (params?: { search?: string; api_name?: string; limit?: number; offset?: number }) =>
@@ -268,5 +291,37 @@ export const api = {
       apiClient.delete(`/api/guidance/system-prompt/sections/${sectionName}`),
     getGeneratedSystemPrompt: () =>
       apiClient.get<{ prompt: string }>('/api/guidance/system-prompt'),
+
+    // Workflow Validation & Execution
+    validateWorkflow: (id: number) =>
+      apiClient.post<{ valid: boolean; errors: string[] }>(`/api/guidance/workflows/${id}/validate`),
+    listWorkflowExecutions: (workflowId?: number, limit?: number) =>
+      apiClient.get<WorkflowExecution[]>('/api/guidance/workflow-executions', {
+        params: { workflow_id: workflowId, limit },
+      }),
+    getWorkflowExecution: (id: number) =>
+      apiClient.get<WorkflowExecution>(`/api/guidance/workflow-executions/${id}`),
+
+    // Use Cases
+    listUseCases: (category?: string) =>
+      apiClient.get<UseCase[]>('/api/guidance/use-cases', { params: category ? { category } : {} }),
+    getUseCase: (id: number) =>
+      apiClient.get<UseCase>(`/api/guidance/use-cases/${id}`),
+    createUseCase: (data: any) =>
+      apiClient.post<UseCase>('/api/guidance/use-cases', data),
+    updateUseCase: (id: number, data: any) =>
+      apiClient.put<UseCase>(`/api/guidance/use-cases/${id}`, data),
+    deleteUseCase: (id: number) =>
+      apiClient.delete(`/api/guidance/use-cases/${id}`),
+    setUseCaseWorkflows: (id: number, workflowIds: number[]) =>
+      apiClient.put<UseCase>(`/api/guidance/use-cases/${id}/workflows`, { workflow_ids: workflowIds }),
+
+    // Batch description generation
+    generateDescriptionsBatch: (apiName?: string) =>
+      apiClient.post<{ created: number; updated: number; skipped: number }>(
+        '/api/tool-descriptions/generate-batch',
+        null,
+        { params: { api_name: apiName || 'all' } }
+      ),
   },
 };

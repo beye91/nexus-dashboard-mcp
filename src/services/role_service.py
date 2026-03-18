@@ -332,7 +332,7 @@ class RoleService:
                 search_term = f"%{search.lower()}%"
                 query = query.where(
                     APIEndpoint.operation_id.ilike(search_term) |
-                    APIEndpoint.method.ilike(search_term)
+                    APIEndpoint.http_method.ilike(search_term)
                 )
 
             # Count total
@@ -349,11 +349,11 @@ class RoleService:
             operations = []
             for ep in endpoints:
                 operations.append({
-                    "name": ep.operation_id,
-                    "method": ep.method,
+                    "name": f"{ep.api_name}_{ep.operation_id}",
+                    "method": ep.http_method,
                     "path": ep.path,
                     "api_name": ep.api_name,
-                    "description": ep.description or f"{ep.method} {ep.path}",
+                    "description": ep.description or f"{ep.http_method} {ep.path}",
                 })
 
             return {
@@ -378,7 +378,7 @@ class RoleService:
                 if ep.api_name not in grouped:
                     grouped[ep.api_name] = []
                 grouped[ep.api_name].append({
-                    "name": ep.operation_id,
+                    "name": f"{ep.api_name}_{ep.operation_id}",
                     "method": ep.http_method,
                     "path": ep.path,
                     "description": ep.description or f"{ep.http_method} {ep.path}",

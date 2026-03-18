@@ -21,6 +21,8 @@ export default function ToolOverridesPage() {
     is_active: true,
   });
   const [newRelatedTool, setNewRelatedTool] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [generateResult, setGenerateResult] = useState<{ created: number; updated: number; skipped: number } | null>(null);
 
   const fetchOverrides = async () => {
     try {
@@ -109,6 +111,21 @@ export default function ToolOverridesPage() {
     });
   };
 
+  const handleGenerateFromSpec = async () => {
+    setGenerating(true);
+    setGenerateResult(null);
+    setError(null);
+    try {
+      const response = await api.guidance.generateDescriptionsBatch();
+      setGenerateResult(response.data);
+      fetchOverrides();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || err.message || 'Failed to generate descriptions');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -132,13 +149,33 @@ export default function ToolOverridesPage() {
 
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Tool Description Overrides</h1>
-        <button
-          onClick={handleCreate}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          Add Override
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleGenerateFromSpec}
+            disabled={generating}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
+          >
+            {generating ? 'Generating...' : 'Generate from Spec'}
+          </button>
+          <button
+            onClick={handleCreate}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          >
+            Add Override
+          </button>
+        </div>
       </div>
+
+      {generateResult && (
+        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 flex justify-between items-center">
+          <span>
+            Generation complete: {generateResult.created} created, {generateResult.updated} updated, {generateResult.skipped} skipped
+          </span>
+          <button onClick={() => setGenerateResult(null)} className="ml-4 text-green-600 hover:text-green-800">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">

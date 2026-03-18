@@ -12,6 +12,7 @@ from src.config.database import Base
 if TYPE_CHECKING:
     from src.models.role import Role
     from src.models.cluster import Cluster
+    from src.models.tool_profile import ToolProfile
 
 
 class User(Base):
@@ -31,6 +32,7 @@ class User(Base):
     auth_type = Column(String(50), default="local")  # 'local' or 'ldap'
     ldap_dn = Column(String(500))  # Distinguished Name for LDAP users
     ldap_config_id = Column(Integer, ForeignKey("ldap_config.id", ondelete="SET NULL"))
+    tool_profile_id = Column(Integer, ForeignKey("tool_profiles.id", ondelete="SET NULL"))
     last_login = Column(DateTime)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
@@ -55,6 +57,7 @@ class User(Base):
         lazy="selectin"
     )
     ldap_config = relationship("LDAPConfig", foreign_keys=[ldap_config_id])
+    tool_profile = relationship("ToolProfile", foreign_keys=[tool_profile_id], lazy="selectin")
 
     def __repr__(self) -> str:
         return f"<User(username='{self.username}', active={self.is_active})>"
@@ -79,6 +82,11 @@ class User(Base):
             "auth_type": self.auth_type,
             "ldap_dn": self.ldap_dn if self.auth_type == "ldap" else None,
             "has_edit_mode": self.has_edit_mode(),
+            "tool_profile_id": self.tool_profile_id,
+            "tool_profile": (
+                {"id": self.tool_profile.id, "name": self.tool_profile.name}
+                if self.tool_profile else None
+            ),
             "last_login": self.last_login.isoformat() if self.last_login else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

@@ -27,6 +27,8 @@ export default function WorkflowDetailPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [tagInput, setTagInput] = useState('');
+  const [validating, setValidating] = useState(false);
+  const [validationResult, setValidationResult] = useState<{ valid: boolean; errors: string[] } | null>(null);
 
   const [workflowForm, setWorkflowForm] = useState({
     display_name: '',
@@ -185,6 +187,20 @@ export default function WorkflowDetailPage() {
     });
   }
 
+  async function handleValidate() {
+    setValidating(true);
+    setValidationResult(null);
+    setError(null);
+    try {
+      const response = await api.guidance.validateWorkflow(workflowId);
+      setValidationResult(response.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to validate workflow');
+    } finally {
+      setValidating(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -249,13 +265,66 @@ export default function WorkflowDetailPage() {
                 ))}
               </div>
             </div>
-            <button
-              onClick={() => setShowEditModal(true)}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition"
-            >
-              Edit Details
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={handleValidate}
+                disabled={validating}
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition disabled:opacity-50"
+              >
+                {validating ? 'Validating...' : 'Validate'}
+              </button>
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition"
+              >
+                Edit Details
+              </button>
+            </div>
           </div>
+
+          {validationResult && (
+            <div className={`mt-4 p-4 rounded-lg border ${
+              validationResult.valid
+                ? 'bg-green-50 border-green-200'
+                : 'bg-red-50 border-red-200'
+            }`}>
+              <div className={`flex items-center gap-2 font-medium text-sm ${
+                validationResult.valid ? 'text-green-800' : 'text-red-800'
+              }`}>
+                {validationResult.valid ? (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Workflow is valid
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Validation failed ({validationResult.errors.length} error{validationResult.errors.length !== 1 ? 's' : ''})
+                  </>
+                )}
+                <button
+                  onClick={() => setValidationResult(null)}
+                  className="ml-auto text-gray-400 hover:text-gray-600"
+                >
+                  &times;
+                </button>
+              </div>
+              {validationResult.errors.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {validationResult.errors.map((err, i) => (
+                    <li key={i} className="text-sm text-red-700 flex items-start gap-1.5">
+                      <span className="mt-0.5 flex-shrink-0">-</span>
+                      {err}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
 
         {success && (

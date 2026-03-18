@@ -108,6 +108,8 @@ export interface User {
   clusters: { id: number; name: string }[];
   has_edit_mode: boolean;
   api_token?: string;  // Only returned for current user
+  tool_profile_id?: number | null;
+  tool_profile?: { id: number; name: string } | null;
 }
 
 export interface CreateUserRequest {
@@ -367,6 +369,10 @@ export interface WorkflowStep {
   expected_output: string | null;
   optional: boolean;
   fallback_operation: string | null;
+  input_mapping?: Record<string, string>;
+  output_key?: string | null;
+  condition_type?: string;
+  condition?: Record<string, any>;
   created_at: string | null;
 }
 
@@ -404,6 +410,77 @@ export interface SystemPromptSection {
   title: string | null;
   content: string;
   is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+// ==================== Tool Profile Types ====================
+
+export interface ToolProfile {
+  id: number;
+  name: string;
+  description: string | null;
+  max_tools: number;
+  is_active: boolean;
+  operations_count: number;
+  operations?: string[];
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CreateToolProfileRequest {
+  name: string;
+  description?: string;
+  max_tools?: number;
+  operations?: string[];
+}
+
+export interface UpdateToolProfileRequest {
+  name?: string;
+  description?: string;
+  max_tools?: number;
+  is_active?: boolean;
+}
+
+// ==================== Workflow Execution Types ====================
+
+export interface WorkflowExecution {
+  id: number;
+  workflow_id: number;
+  user_id: number | null;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  context: Record<string, any>;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string | null;
+  step_executions?: WorkflowStepExecution[];
+}
+
+export interface WorkflowStepExecution {
+  id: number;
+  execution_id: number;
+  step_order: number;
+  operation_name: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  input_data: Record<string, any>;
+  output_data: Record<string, any>;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+// ==================== Use Case Types ====================
+
+export interface UseCase {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string | null;
+  category: string | null;
+  is_active: boolean;
+  workflows_count: number;
+  workflows?: { id: number; name: string; display_name: string }[];
   created_at: string | null;
   updated_at: string | null;
 }
